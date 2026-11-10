@@ -1,0 +1,100 @@
+{
+  "format": "ae-motion/1",
+  "mode": "engine",
+  "space": "parent",
+  "clip": {
+    "name": "sample",
+    "fps": 60,
+    "sampleFps": 4,
+    "length": 1.5,
+    "comp": { "width": 1920, "height": 1080 }
+  },
+  "units": {
+    "position": "px",
+    "rotation": "deg",
+    "scale": "ratio (1.0 = 100%)",
+    "alpha": "0..1",
+    "time": "ms"
+  },
+  "layers": [
+    {
+      "id": "1-bg",
+      "index": 1,
+      "name": "bg",
+      "type": "image",
+      "z": 1,
+      "parent": null,
+      "enabled": true,
+      "inPoint": 0,
+      "outPoint": 1.5,
+      "asset": { "source": "bg.png", "left": 0, "top": 0, "width": 1920, "height": 1080, "anchor": [960, 540] },
+      "blend": { "mode": "NORMAL", "role": "normal", "group": 1, "preserveAlpha": false, "classic": true },
+      "neutral": { "mul": 1.0, "add": 0.0 },
+      "channelPlan": "rgba",
+      "static": true,
+      "isStatic": true,
+      "firstLastDelta": { "position": 0, "rotation": 0, "scale": 0, "alpha": 0 },
+      "tracks": {
+        "position": [[0, 960, 540]],
+        "rotation": [[0, 0]],
+        "scale": [[0, 1, 1]],
+        "alpha": [[0, 1]]
+      }
+    },
+    {
+      "id": "3-girl",
+      "index": 3,
+      "name": "girl",
+      "type": "image",
+      "z": 3,
+      "parent": 2,
+      "enabled": true,
+      "inPoint": 0,
+      "outPoint": 1.5,
+      "asset": { "source": "girl/start.psd", "left": 412, "top": 233, "width": 255, "height": 382, "anchor": [127.5, 191] },
+      "blend": { "mode": "NORMAL", "role": "normal", "group": 1, "preserveAlpha": false, "classic": true },
+      "neutral": { "mul": 1.0, "add": 0.0 },
+      "channelPlan": "rgba",
+      "static": false,
+      "isStatic": false,
+      "firstLastDelta": { "position": 0, "rotation": 0, "scale": 0, "alpha": 0 },
+      "tracks": {
+        "position": [[0, 228.5, 740.07], [500, 218.6, 400.0], [1000, 218.6, 300.0], [1500, 218.6, -259.18]],
+        "rotation": [[0, 0]],
+        "scale": [[0, 1, 1]],
+        "alpha": [[0, 1]]
+      }
+    },
+    {
+      "id": "2-rig",
+      "index": 2,
+      "name": "rig",
+      "type": "null",
+      "z": 2,
+      "parent": null,
+      "enabled": true,
+      "inPoint": 0,
+      "outPoint": 1.5,
+      "asset": { "source": null, "left": 0, "top": 0, "width": 100, "height": 100, "anchor": [0, 0] },
+      "blend": { "mode": "NORMAL", "role": "normal", "group": 1, "preserveAlpha": false, "classic": true },
+      "neutral": { "mul": 1.0, "add": 0.0 },
+      "channelPlan": "rgba",
+      "static": true,
+      "isStatic": true,
+      "firstLastDelta": { "position": 0, "rotation": 0, "scale": 0, "alpha": 0 },
+      "tracks": {
+        "position": [[0, 960, 540]],
+        "rotation": [[0, 0]],
+        "scale": [[0, 1, 1]],
+        "alpha": [[0, 1]]
+      }
+    }
+  ],
+  "unsupported": [],
+  "notes": [
+    "THIS SAMPLE IS TRIMMED to 4 samples/s for readability. Real exports default to 60.",
+    "Tracks are parent-space. Rebuild the same node hierarchy, do not flatten.",
+    "AE layer opacity does not inherit: drive self_modulate, not modulate.",
+    "channelPlan=multiplier: neutral value is 1.0, never 0.0."
+  ]
+}
