@@ -23,6 +23,8 @@ var _art_dir := ""
 var _frames_root := ""
 var _out_scene := ""
 var _fps := 60.0
+var _comp_size := Vector2(1920, 1080)
+var _comp_space_layers := {}
 
 
 func build(json_path: String, art_dir: String, out_scene: String, frames_dir: String = "") -> Dictionary:
@@ -60,6 +62,9 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 
 	var clip: Dictionary = data["clip"]
 	_fps = float(clip.get("sampleFps", clip.get("fps", 60.0)))
+	var comp: Dictionary = clip.get("comp", {})
+	_comp_size = Vector2(float(comp.get("width", 1920)), float(comp.get("height", 1080)))
+	_comp_space_layers.clear()
 
 	_root = Node2D.new()
 	_root.name = _base_name(String(clip["name"]))
@@ -136,10 +141,17 @@ func _node_for(idx: int) -> Node2D:
 		asp.animation = "default"
 		asp.autoplay = "default"
 		asp.centered = false
+		asp.z_index = -int(L["z"])
+
 		var fa: Dictionary = L["asset"]
 		var fanchor: Array = fa["anchor"]
-		asp.offset = -Vector2(float(fanchor[0]), float(fanchor[1]))
-		asp.z_index = -int(L["z"])
+		if _is_comp_sized(asp.sprite_frames):
+			# 整帧序列：像素已经是合成空间的了，位置改成"相对首帧的位移"
+			asp.offset = Vector2.ZERO
+			_comp_space_layers[idx] = true
+		else:
+			# 只含这一层内容的序列：按锚点摆
+			asp.offset = -Vector2(float(fanchor[0]), float(fanchor[1]))
 		n = asp
 
 	else:
@@ -291,8 +303,15 @@ func _build_animation(data: Dictionary) -> Array:
 			var t1 := anim.add_track(Animation.TYPE_VALUE)
 			anim.track_set_path(t1, NodePath(rel + ":position"))
 			anim.track_set_interpolation_type(t1, Animation.INTERPOLATION_LINEAR)
+			var p_first: Array = tk["position"][0]
+			var delta := bool(_comp_space_layers.get(int(L["index"]), false))
 			for s in tk["position"]:
-				anim.track_insert_key(t1, float(s[0]) / 1000.0, Vector2(float(s[1]), float(s[2])))
+				var px := float(s[1])
+				var py := float(s[2])
+				if delta:
+					px -= float(p_first[1])
+					py -= float(p_first[2])
+				anim.track_insert_key(t1, float(s[0]) / 1000.0, Vector2(px, py))
 				keys += 1
 			tracks += 1
 
@@ -388,3 +407,13 @@ func _unique_name(parent: Node, base: String, self_node: Node) -> String:
 		nm = "%s_%d" % [base, i]
 		i += 1
 	return nm
+
+
+func _is_comp_sized(sf: SpriteFrames) -> bool:
+	if sf.get_frame_count("default") == 0:
+		return false
+	var tex := sf.get_frame_texture("default", 0)
+	if tex == null:
+		return false
+	var ts := tex.get_size()
+	return absf(ts.x - _comp_size.x) <= 2.0 and absf(ts.y - _comp_size.y) <= 2.0
