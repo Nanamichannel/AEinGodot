@@ -17,6 +17,7 @@ var _root: Node2D
 var _missing := []
 var _missing_frames := []
 var _blend_skipped := []
+var _heavy_frames := []
 var _lines: PackedStringArray = []
 var _art_dir := ""
 var _frames_root := ""
@@ -30,6 +31,7 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	_missing.clear()
 	_missing_frames.clear()
 	_blend_skipped.clear()
+	_heavy_frames.clear()
 	_lines = PackedStringArray()
 	_art_dir = art_dir
 	_out_scene = out_scene
@@ -90,6 +92,10 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 		_lines.append("贴图：全部找到")
 	else:
 		_lines.append("缺贴图 %d 张：%s" % [_missing.size(), ", ".join(PackedStringArray(_missing))])
+	if not _heavy_frames.is_empty():
+		_lines.append("⚠ 序列帧太重：%s —— 建议裁切/缩尺寸/降帧率，否则会爆显存" % [
+			", ".join(PackedStringArray(_heavy_frames))
+		])
 	if not _missing_frames.is_empty():
 		_lines.append("缺序列帧目录 %d 个：%s（在 %s 下找）" % [
 			_missing_frames.size(), ", ".join(PackedStringArray(_missing_frames)), _frames_root
@@ -202,13 +208,28 @@ func _build_sprite_frames(folder: String) -> SpriteFrames:
 	dir.list_dir_end()
 
 	files.sort()
+	var loaded := 0
+	var failed := 0
+	var bytes := 0
 	for name in files:
 		var t = load(path.path_join(String(name)))
 		if t is Texture2D:
 			sf.add_frame("default", t as Texture2D)
+			var ts: Vector2 = (t as Texture2D).get_size()
+			bytes += int(ts.x * ts.y * 4.0)
+			loaded += 1
+		else:
+			failed += 1
+			# PNG 还没被 Godot 导入时，每张 load 都会失败并触发一次导入尝试。
+			# 连续失败就立刻收手，别把编辑器卡死。
+			if loaded == 0 and failed >= 3:
+				_missing_frames.append(folder + "（PNG 未导入完成）")
+				return sf
 
 	if files.is_empty():
 		_missing_frames.append(folder)
+	elif bytes > 268435456:
+		_heavy_frames.append("%s（%d 帧，约 %d MB 显存）" % [folder, loaded, bytes / 1048576])
 	return sf
 
 

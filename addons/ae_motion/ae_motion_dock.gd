@@ -166,6 +166,8 @@ func _run() -> void:
 
 	_busy = true
 	_log.text = "生成中…"
+	# 先扫一遍，让新放进去的 PNG 有机会被导入
+	EditorInterface.get_resource_filesystem().scan()
 	var b = load("res://addons/ae_motion/ae_builder.gd").new()
 	var fdir := _frames_edit.text.strip_edges()
 	var res: Dictionary = b.build(j, a, o, fdir)
