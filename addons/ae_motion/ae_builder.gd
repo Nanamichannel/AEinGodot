@@ -18,6 +18,7 @@ var _missing := []
 var _missing_frames := []
 var _blend_skipped := []
 var _heavy_frames := []
+var _frames_size_mismatch := []
 var _lines: PackedStringArray = []
 var _art_dir := ""
 var _frames_root := ""
@@ -34,6 +35,7 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	_missing_frames.clear()
 	_blend_skipped.clear()
 	_heavy_frames.clear()
+	_frames_size_mismatch.clear()
 	_lines = PackedStringArray()
 	_art_dir = art_dir
 	_out_scene = out_scene
@@ -97,6 +99,8 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 		_lines.append("贴图：全部找到")
 	else:
 		_lines.append("缺贴图 %d 张：%s" % [_missing.size(), ", ".join(PackedStringArray(_missing))])
+	if not _frames_size_mismatch.is_empty():
+		_lines.append("⚠ 序列帧和图层边界不一致，位置会偏：" + ", ".join(PackedStringArray(_frames_size_mismatch)))
 	if not _heavy_frames.is_empty():
 		_lines.append("⚠ 序列帧太重：%s —— 建议裁切/缩尺寸/降帧率，否则会爆显存" % [
 			", ".join(PackedStringArray(_heavy_frames))
@@ -145,6 +149,7 @@ func _node_for(idx: int) -> Node2D:
 
 		var fa: Dictionary = L["asset"]
 		var fanchor: Array = fa["anchor"]
+		_check_frames_size(asp.sprite_frames, fa, String(L["name"]))
 		if _is_comp_sized(asp.sprite_frames):
 			# 整帧序列：像素已经是合成空间的了，位置改成"相对首帧的位移"
 			asp.offset = Vector2.ZERO
@@ -417,3 +422,22 @@ func _is_comp_sized(sf: SpriteFrames) -> bool:
 		return false
 	var ts := tex.get_size()
 	return absf(ts.x - _comp_size.x) <= 2.0 and absf(ts.y - _comp_size.y) <= 2.0
+
+
+func _check_frames_size(sf: SpriteFrames, asset: Dictionary, layer_name: String) -> void:
+	if sf.get_frame_count("default") == 0:
+		return
+	var tex := sf.get_frame_texture("default", 0)
+	if tex == null:
+		return
+	var ts := tex.get_size()
+	var w := float(asset.get("width", 0))
+	var h := float(asset.get("height", 0))
+	if w <= 0.0 or h <= 0.0:
+		return
+	if _is_comp_sized(sf):
+		return
+	if absf(ts.x - w) > 2.0 or absf(ts.y - h) > 2.0:
+		_frames_size_mismatch.append("%s：序列帧 %dx%d，图层边界 %dx%d" % [
+			layer_name, int(ts.x), int(ts.y), int(w), int(h)
+		])
