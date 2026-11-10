@@ -175,6 +175,9 @@ func _node_for(idx: int) -> Node2D:
 		sp.offset = -(Vector2(float(anchor[0]), float(anchor[1])) - (Vector2(wj, hj) - tex_size))
 		n = sp
 
+	# AE 的层序是全局的：必须关掉相对父级累加，否则子层会被父级的 z 拖到底下
+	n.z_as_relative = false
+
 	# 静态值（动画层的轨道会覆盖）
 	var p0: Array = L["tracks"]["position"][0]
 	n.position = Vector2(float(p0[1]), float(p0[2]))
