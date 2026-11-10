@@ -4,26 +4,36 @@ extends RefCounted
 ## ae_builder.gd —— 把 ae-motion/1 JSON 建成场景 + AnimationPlayer。
 ## 不依赖编辑器，也不依赖任何工程的路径，全部由参数传入。
 ##
+## 图层两种形态：
+##   - 普通层：一张 PNG（Sprite2D）
+##   - 序列帧层：json 里带 frames 字段（AnimatedSprite2D），像素烘好，
+##     位置/层级/时间窗仍然吃 json 的轨道
+##
 
 var _by_index := {}
 var _nodes := {}
 var _layer_list := []
 var _root: Node2D
 var _missing := []
+var _missing_frames := []
 var _blend_skipped := []
 var _lines: PackedStringArray = []
 var _art_dir := ""
+var _frames_root := ""
 var _out_scene := ""
+var _fps := 60.0
 
 
-func build(json_path: String, art_dir: String, out_scene: String) -> Dictionary:
+func build(json_path: String, art_dir: String, out_scene: String, frames_dir: String = "") -> Dictionary:
 	_by_index.clear()
 	_nodes.clear()
 	_missing.clear()
+	_missing_frames.clear()
 	_blend_skipped.clear()
 	_lines = PackedStringArray()
 	_art_dir = art_dir
 	_out_scene = out_scene
+	_frames_root = frames_dir if frames_dir != "" else art_dir.path_join("Frames")
 
 	if json_path == "" or not FileAccess.file_exists(json_path):
 		return _fail("找不到 JSON：" + json_path)
@@ -47,6 +57,8 @@ func build(json_path: String, art_dir: String, out_scene: String) -> Dictionary:
 		return _fail("JSON 里没有 layers")
 
 	var clip: Dictionary = data["clip"]
+	_fps = float(clip.get("sampleFps", clip.get("fps", 60.0)))
+
 	_root = Node2D.new()
 	_root.name = _base_name(String(clip["name"]))
 
@@ -69,19 +81,30 @@ func build(json_path: String, art_dir: String, out_scene: String) -> Dictionary:
 		_layer_list.size(), stats[0], stats[1], stats[2]
 	])
 	_lines.append("输出：" + _out_scene)
+
 	if not _blend_skipped.is_empty():
-		_lines.append("⚠ 混合模式未实现 %d 层：%s（现在是普通叠加，需要 shader+BackBufferCopy）" % [
+		_lines.append("⚠ 混合模式未实现 %d 层：%s（现在是普通叠加）" % [
 			_blend_skipped.size(), ", ".join(PackedStringArray(_blend_skipped))
 		])
 	if _missing.is_empty():
 		_lines.append("贴图：全部找到")
 	else:
 		_lines.append("缺贴图 %d 张：%s" % [_missing.size(), ", ".join(PackedStringArray(_missing))])
+	if not _missing_frames.is_empty():
+		_lines.append("缺序列帧目录 %d 个：%s（在 %s 下找）" % [
+			_missing_frames.size(), ", ".join(PackedStringArray(_missing_frames)), _frames_root
+		])
 
 	if err != OK:
 		return _fail("保存场景失败：%d" % err)
 
-	return {"ok": true, "lines": _lines, "scene": _out_scene, "missing": _missing}
+	return {
+		"ok": true,
+		"lines": _lines,
+		"scene": _out_scene,
+		"missing": _missing,
+		"missing_frames": _missing_frames
+	}
 
 
 func _fail(msg: String) -> Dictionary:
@@ -94,11 +117,25 @@ func _node_for(idx: int) -> Node2D:
 		return _nodes[idx]
 
 	var L: Dictionary = _by_index[idx]
+	var frames_name := String(L.get("frames", ""))
 	var n: Node2D
 
 	if String(L.get("type", "image")) == "null":
 		n = Node2D.new()
 		n.z_index = -int(L["z"])
+
+	elif frames_name != "":
+		var asp := AnimatedSprite2D.new()
+		asp.sprite_frames = _build_sprite_frames(frames_name)
+		asp.animation = "default"
+		asp.autoplay = "default"
+		asp.centered = false
+		var fa: Dictionary = L["asset"]
+		var fanchor: Array = fa["anchor"]
+		asp.offset = -Vector2(float(fanchor[0]), float(fanchor[1]))
+		asp.z_index = -int(L["z"])
+		n = asp
+
 	else:
 		var sp := Sprite2D.new()
 		sp.centered = false
@@ -112,20 +149,18 @@ func _node_for(idx: int) -> Node2D:
 		var tex_size := Vector2(wj, hj)
 		if sp.texture != null:
 			tex_size = sp.texture.get_size()
-		# left/top 一般为 0；PNG 被裁小时在这里补偿
 		sp.offset = -(Vector2(float(anchor[0]), float(anchor[1])) - (Vector2(wj, hj) - tex_size))
 		n = sp
 
-	# 静态值（动画层的轨道会覆盖它们）
+	# 静态值（动画层的轨道会覆盖）
 	var p0: Array = L["tracks"]["position"][0]
 	n.position = Vector2(float(p0[1]), float(p0[2]))
 	var r0: Array = L["tracks"]["rotation"][0]
 	n.rotation = deg_to_rad(float(r0[1]))
 	var s0: Array = L["tracks"]["scale"][0]
 	n.scale = Vector2(float(s0[1]), float(s0[2]))
-	if n is Sprite2D:
-		var a0: Array = L["tracks"]["alpha"][0]
-		(n as Sprite2D).self_modulate = Color(1.0, 1.0, 1.0, float(a0[1]))
+	var a0: Array = L["tracks"]["alpha"][0]
+	n.self_modulate = Color(1.0, 1.0, 1.0, float(a0[1]))
 
 	var blend: Dictionary = L.get("blend", {})
 	if String(blend.get("role", "normal")) != "normal":
@@ -144,6 +179,37 @@ func _node_for(idx: int) -> Node2D:
 		n.name = _unique_name(_root, String(n.name), n)
 
 	return n
+
+
+func _build_sprite_frames(folder: String) -> SpriteFrames:
+	var sf := SpriteFrames.new()
+	sf.set_animation_speed("default", _fps)
+	sf.set_animation_loop("default", true)
+
+	var path := _frames_root.path_join(folder)
+	var dir := DirAccess.open(path)
+	if dir == null:
+		_missing_frames.append(folder)
+		return sf
+
+	var files: Array = []
+	dir.list_dir_begin()
+	var f := dir.get_next()
+	while f != "":
+		if not dir.current_is_dir() and f.get_extension().to_lower() == "png":
+			files.append(f)
+		f = dir.get_next()
+	dir.list_dir_end()
+
+	files.sort()
+	for name in files:
+		var t = load(path.path_join(String(name)))
+		if t is Texture2D:
+			sf.add_frame("default", t as Texture2D)
+
+	if files.is_empty():
+		_missing_frames.append(folder)
+	return sf
 
 
 func _texture_for(L: Dictionary) -> Texture2D:
@@ -276,7 +342,7 @@ func _varies(track: Array, dims: int) -> bool:
 func _base_name(raw: String) -> String:
 	var nm := raw.get_slice("/", 0)
 	nm = nm.get_basename()
-	for ch in [".", ":", "@", "\"", "%", "\n", "\r", "\t"]:
+	for ch in [".", ":", "@", "#", "\"", "%", "\n", "\r", "\t"]:
 		nm = nm.replace(ch, "_")
 	nm = nm.strip_edges()
 	if nm == "":
@@ -289,6 +355,7 @@ func _norm(s: String) -> String:
 	for ch in [" ", "-", "_", ".", "(", ")", "（", "）"]:
 		out = out.replace(ch, "")
 	return out
+
 
 func _unique_name(parent: Node, base: String, self_node: Node) -> String:
 	var nm := base

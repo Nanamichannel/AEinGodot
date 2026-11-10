@@ -482,6 +482,15 @@
             firstLastDelta: null
         };
 
+        // 名字里带 #fx 的层当作"序列帧层"：像素由外部 PNG 序列提供，
+        // 位置/层级/时间窗仍然吃这份 json。
+        var framesDir = "";
+        var rawName = String(layer.name);
+        if (rawName.indexOf("#fx") >= 0) {
+            framesDir = rawName.split("#fx").join("");
+            framesDir = framesDir.replace(/^\s+|\s+$/g, "");
+        }
+        entry.frames = framesDir;
         // flags
         try {
             entry.threeD = (layer.threeDLayer === true);

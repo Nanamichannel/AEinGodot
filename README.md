@@ -94,6 +94,25 @@ AE 的缓动用「影响 / 速度」表示，Godot 用贝塞尔控制点，Unity
 
 ---
 
+---
+
+## 序列帧层（效果 / 粒子 / 辉光）
+
+有些东西参数化不了，只能在 AE 里做成像素。这类层用命名约定标记，**像素走 PNG 序列，运动和层级照样走 json**：
+
+1. AE 里把图层改名，结尾加 `#fx`，例如 `粒子_风#fx`
+2. 渲染 PNG 序列（RGB+Alpha、直通 alpha、60fps、`0000.png` 递增），放进
+   `res://<素材目录>/Frames/粒子_风/`
+3. 导出 json —— 这一层会带 `"frames": "粒子_风"`
+
+插件遇到带 `frames` 的层会建 `AnimatedSprite2D`：帧率取 `clip.sampleFps`、循环播放、
+`centered = false`、`offset = -anchor`，然后 position / rotation / scale / alpha 轨道照常套用。
+
+面板上「序列帧目录」留空时默认是 `<素材目录>/Frames`。
+
+> 渲染时记得：只渲染这一层（其他层独奏关闭）、用区域渲染裁到效果边界。全屏烘帧会爆显存：
+> 1920×1080 RGBA 每帧 8.3MB，60 帧就是 500MB。
+
 ## 已知限制
 
 | 限制 | 说明 |

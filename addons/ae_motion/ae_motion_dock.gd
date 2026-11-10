@@ -6,6 +6,7 @@ extends VBoxContainer
 
 var _json_edit: LineEdit
 var _art_edit: LineEdit
+var _frames_edit: LineEdit
 var _out_edit: LineEdit
 var _log: TextEdit
 var _auto: CheckBox
@@ -28,6 +29,7 @@ func _build_ui() -> void:
 
 	_json_edit = _row("AE 导出的 json", _browse_json)
 	_art_edit = _row("素材目录（项目内）", _browse_art)
+	_frames_edit = _row("序列帧目录（可选）", _browse_frames)
 	_out_edit = _row("输出场景（项目内）", _browse_out)
 
 	var opts := HBoxContainer.new()
@@ -101,6 +103,18 @@ func _browse_art() -> void:
 	_dlg.popup_centered_ratio(0.5)
 
 
+func _browse_frames() -> void:
+	_target = "frames"
+	_dlg.access = EditorFileDialog.ACCESS_RESOURCES
+	_dlg.file_mode = EditorFileDialog.FILE_MODE_OPEN_DIR
+	_dlg.clear_filters()
+	if _frames_edit.text.strip_edges() != "":
+		_dlg.current_dir = _frames_edit.text.strip_edges()
+	elif _art_edit.text.strip_edges() != "":
+		_dlg.current_dir = _art_edit.text.strip_edges()
+	_dlg.popup_centered_ratio(0.5)
+
+
 func _browse_out() -> void:
 	_target = "out"
 	_dlg.access = EditorFileDialog.ACCESS_RESOURCES
@@ -127,6 +141,10 @@ func _on_file_selected(path: String) -> void:
 func _on_dir_selected(path: String) -> void:
 	if _target == "art":
 		_art_edit.text = path
+		if _frames_edit.text.strip_edges() == "":
+			_frames_edit.text = path.path_join("Frames")
+	elif _target == "frames":
+		_frames_edit.text = path
 	_after_pick()
 
 
@@ -149,7 +167,8 @@ func _run() -> void:
 	_busy = true
 	_log.text = "生成中…"
 	var b = load("res://addons/ae_motion/ae_builder.gd").new()
-	var res: Dictionary = b.build(j, a, o)
+	var fdir := _frames_edit.text.strip_edges()
+	var res: Dictionary = b.build(j, a, o, fdir)
 	var text := ""
 	for line in res.get("lines", []):
 		text += String(line) + "\n"
