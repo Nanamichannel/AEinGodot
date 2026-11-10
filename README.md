@@ -113,6 +113,23 @@ AE 的缓动用「影响 / 速度」表示，Godot 用贝塞尔控制点，Unity
 > 渲染时记得：只渲染这一层（其他层独奏关闭）、用区域渲染裁到效果边界。全屏烘帧会爆显存：
 > 1920×1080 RGBA 每帧 8.3MB，60 帧就是 500MB。
 
+## 效果预制件
+
+AE 里那些“只是让画面变好看”的操作，不用烘帧，挂材质就行：
+
+| 想做的事 | 用什么 |
+|---|---|
+| 外发光 | `shaders/preset_glow.tres`，调 `glow_amount` |
+| 调色 / 去色 | `shaders/preset_tint.tres`，调 `tint_amount` + `saturation` |
+| 湍流置换 | `shaders/preset_displace.tres` + 一张噪声图 |
+| 烟雾飘散 | `prefabs/particles_smoke.tscn`（循环） |
+| 迸溅光点 | `prefabs/particles_spark.tscn`（`restart()` 触发） |
+
+用法：选中节点 → 检查器 Material → 快速加载 → 选预设 → 调参数。
+详见 `addons/ae_motion/FX使用说明.md`。
+
+判断标准只有一条：**这层的像素会不会自己“长”出新形状？**
+不会 → 挂材质；会 → 粒子或短循环序列帧。
 ## 已知限制
 
 | 限制 | 说明 |
