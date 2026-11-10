@@ -485,12 +485,20 @@
         // 名字里带 #fx 的层当作"序列帧层"：像素由外部 PNG 序列提供，
         // 位置/层级/时间窗仍然吃这份 json。
         var framesDir = "";
+        var framesLoop = true;
         var rawName = String(layer.name);
         if (rawName.indexOf("#fx") >= 0) {
-            framesDir = rawName.split("#fx").join("");
+            // #fx-once 优先：播一遍停在末帧；#fx 则循环
+            if (rawName.indexOf("#fx-once") >= 0) {
+                framesLoop = false;
+                framesDir = rawName.split("#fx-once").join("");
+            } else {
+                framesDir = rawName.split("#fx").join("");
+            }
             framesDir = framesDir.replace(/^\s+|\s+$/g, "");
         }
         entry.frames = framesDir;
+        entry.framesLoop = framesLoop;
         // flags
         try {
             entry.threeD = (layer.threeDLayer === true);

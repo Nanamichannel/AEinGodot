@@ -141,7 +141,7 @@ func _node_for(idx: int) -> Node2D:
 
 	elif frames_name != "":
 		var asp := AnimatedSprite2D.new()
-		asp.sprite_frames = _build_sprite_frames(frames_name)
+		asp.sprite_frames = _build_sprite_frames(frames_name, bool(L.get("framesLoop", true)))
 		asp.animation = "default"
 		asp.autoplay = "default"
 		asp.centered = false
@@ -179,12 +179,18 @@ func _node_for(idx: int) -> Node2D:
 	n.z_as_relative = false
 
 	# 静态值（动画层的轨道会覆盖）
-	var p0: Array = L["tracks"]["position"][0]
-	n.position = Vector2(float(p0[1]), float(p0[2]))
-	var r0: Array = L["tracks"]["rotation"][0]
-	n.rotation = deg_to_rad(float(r0[1]))
-	var s0: Array = L["tracks"]["scale"][0]
-	n.scale = Vector2(float(s0[1]), float(s0[2]))
+	if bool(_comp_space_layers.get(idx, false)):
+		# 整帧序列：像素已经含位置，姿态归零，位移只由轨道给（相对首帧）
+		n.position = Vector2.ZERO
+		n.rotation = 0.0
+		n.scale = Vector2.ONE
+	else:
+		var p0: Array = L["tracks"]["position"][0]
+		n.position = Vector2(float(p0[1]), float(p0[2]))
+		var r0: Array = L["tracks"]["rotation"][0]
+		n.rotation = deg_to_rad(float(r0[1]))
+		var s0: Array = L["tracks"]["scale"][0]
+		n.scale = Vector2(float(s0[1]), float(s0[2]))
 	var a0: Array = L["tracks"]["alpha"][0]
 	n.self_modulate = Color(1.0, 1.0, 1.0, float(a0[1]))
 
@@ -207,10 +213,10 @@ func _node_for(idx: int) -> Node2D:
 	return n
 
 
-func _build_sprite_frames(folder: String) -> SpriteFrames:
+func _build_sprite_frames(folder: String, loop_anim: bool = true) -> SpriteFrames:
 	var sf := SpriteFrames.new()
 	sf.set_animation_speed("default", _fps)
-	sf.set_animation_loop("default", true)
+	sf.set_animation_loop("default", loop_anim)
 
 	var path := _frames_root.path_join(folder)
 	var dir := DirAccess.open(path)
@@ -327,8 +333,13 @@ func _build_animation(data: Dictionary) -> Array:
 			var t2 := anim.add_track(Animation.TYPE_VALUE)
 			anim.track_set_path(t2, NodePath(rel + ":rotation"))
 			anim.track_set_interpolation_type(t2, Animation.INTERPOLATION_LINEAR)
+			var r_first := float(tk["rotation"][0][1])
+			var rdelta := bool(_comp_space_layers.get(int(L["index"]), false))
 			for s in tk["rotation"]:
-				anim.track_insert_key(t2, float(s[0]) / 1000.0, deg_to_rad(float(s[1])))
+				var rv := float(s[1])
+				if rdelta:
+					rv -= r_first
+				anim.track_insert_key(t2, float(s[0]) / 1000.0, deg_to_rad(rv))
 				keys += 1
 			tracks += 1
 
@@ -336,8 +347,15 @@ func _build_animation(data: Dictionary) -> Array:
 			var t3 := anim.add_track(Animation.TYPE_VALUE)
 			anim.track_set_path(t3, NodePath(rel + ":scale"))
 			anim.track_set_interpolation_type(t3, Animation.INTERPOLATION_LINEAR)
+			var s_first: Array = tk["scale"][0]
+			var sdelta := bool(_comp_space_layers.get(int(L["index"]), false))
 			for s in tk["scale"]:
-				anim.track_insert_key(t3, float(s[0]) / 1000.0, Vector2(float(s[1]), float(s[2])))
+				var sxv := float(s[1])
+				var syv := float(s[2])
+				if sdelta:
+					sxv = sxv / maxf(float(s_first[1]), 0.0001)
+					syv = syv / maxf(float(s_first[2]), 0.0001)
+				anim.track_insert_key(t3, float(s[0]) / 1000.0, Vector2(sxv, syv))
 				keys += 1
 			tracks += 1
 
