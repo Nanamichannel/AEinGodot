@@ -66,7 +66,15 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	var segments := _parse_segments(segments_spec, float(clip.get("length", 0.0)))
 	for seg in segments:
 		if bool(seg["loop"]):
-			_lines.append("段 %s：%.2fs – %.2fs（循环，末帧对齐首帧）" % [seg["name"], seg["start"], seg["end"]])
+			var drift := _seam_drift(data, float(seg["start"]), float(seg["end"]))
+			var off := _best_seam_offset(data, float(seg["start"]), float(seg["end"]), float(clip.get("sampleFps", 60.0)))
+			if absf(off) > 0.0001:
+				seg["start"] = float(seg["start"]) + off
+				seg["end"] = float(seg["end"]) + off
+			var drift2 := _seam_drift(data, float(seg["start"]), float(seg["end"]))
+			_lines.append("段 %s：%.2fs – %.2fs（循环，接缝微调 %+.2fs，首末差 %.1f → %.1f px）" % [
+				seg["name"], seg["start"], seg["end"], off, drift, drift2
+			])
 		else:
 			_lines.append("段 %s：%.2fs – %.2fs（一次性）" % [seg["name"], seg["start"], seg["end"]])
 	_fps = float(clip.get("sampleFps", clip.get("fps", 60.0)))
@@ -412,16 +420,13 @@ func _slice(track: Array, s: float, e: float, loop: bool) -> Array:
 
 	if loop:
 		var first: Array = out[0]
-		var last: Array = out[out.size() - 1]
-		if int(last[0]) >= end_ms - 1:
-			last[0] = end_ms
-			for i in range(1, last.size()):
-				last[i] = first[i]
-		else:
-			var extra: Array = first.duplicate()
-			extra[0] = end_ms
-			out.append(extra)
-
+		# 去掉正好落在末尾的采样，改成"追加一帧"（值=首帧），
+		# 这样会从上一个采样平滑走过去，而不是把末帧的值直接改掉（那是瞬移）。
+		if out.size() > 1 and int(out[out.size() - 1][0]) >= end_ms - 1:
+			out.remove_at(out.size() - 1)
+		var extra: Array = first.duplicate()
+		extra[0] = end_ms
+		out.append(extra)
 	return out
 
 
@@ -590,3 +595,60 @@ func _apply_loop(data: Dictionary, s: float, e: float) -> void:
 			tracks[ch] = out
 
 	data["clip"]["length"] = dur
+
+
+func _sample_nearest(track: Array, ms: float) -> Array:
+	if track.is_empty():
+		return []
+	var best: Array = track[0]
+	var bd := absf(float(track[0][0]) - ms)
+	for row in track:
+		var d := absf(float(row[0]) - ms)
+		if d < bd:
+			bd = d
+			best = row
+	return best
+
+
+func _seam_drift(data: Dictionary, s: float, e: float) -> float:
+	var worst := 0.0
+	for L in data.get("layers", []):
+		if bool(L.get("isStatic", true)):
+			continue
+		var arr: Array = L["tracks"]["position"]
+		var a := _sample_nearest(arr, s * 1000.0)
+		var b := _sample_nearest(arr, e * 1000.0)
+		if a.is_empty() or b.is_empty():
+			continue
+		var d := Vector2(float(b[1]) - float(a[1]), float(b[2]) - float(a[2])).length()
+		if d > worst:
+			worst = d
+	return worst
+
+
+func _best_seam_offset(data: Dictionary, s: float, e: float, fps: float) -> float:
+	var step := 1.0 / maxf(fps, 1.0)
+	var best := 0.0
+	var best_score := 1e30
+	var d := -0.5
+	while d <= 0.5 + 0.0001:
+		var score := 0.0
+		for L in data.get("layers", []):
+			if bool(L.get("isStatic", true)):
+				continue
+			var arr: Array = L["tracks"]["position"]
+			var a := _sample_nearest(arr, (s + d) * 1000.0)
+			var b := _sample_nearest(arr, (e + d) * 1000.0)
+			if a.is_empty() or b.is_empty():
+				continue
+			var a2 := _sample_nearest(arr, (s + d + step) * 1000.0)
+			var b2 := _sample_nearest(arr, (e + d - step) * 1000.0)
+			var dv := Vector2(float(b[1]) - float(a[1]), float(b[2]) - float(a[2])).length()
+			var v0 := Vector2(float(a2[1]) - float(a[1]), float(a2[2]) - float(a[2]))
+			var v1 := Vector2(float(b[1]) - float(b2[1]), float(b[2]) - float(b2[2]))
+			score += dv + 0.5 * (v0 - v1).length()
+		if score < best_score:
+			best_score = score
+			best = d
+		d += step
+	return best
