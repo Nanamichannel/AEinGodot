@@ -36,10 +36,10 @@ func _build_ui() -> void:
 
 	var seg_box := VBoxContainer.new()
 	var seg_label := Label.new()
-	seg_label.text = "分段（名称:起-止，带 * 为循环）"
+	seg_label.text = "分段（名称:起帧-止帧，带 * 为循环）"
 	seg_box.add_child(seg_label)
 	_segments = LineEdit.new()
-	_segments.placeholder_text = "留空=整段一条；例 intro:0-2; idle:2-5*"
+	_segments.placeholder_text = "留空=整段一条；填帧号，例 intro:0-24; idle:24-240*"
 	seg_box.add_child(_segments)
 	add_child(seg_box)
 	_out_edit = _row("输出场景（项目内）", _browse_out)

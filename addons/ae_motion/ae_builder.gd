@@ -67,13 +67,13 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 		return _fail("JSON 里没有 layers")
 
 	var clip: Dictionary = data["clip"]
+	_fps = float(clip.get("sampleFps", clip.get("fps", 60.0)))
 	var segments := _parse_segments(segments_spec, float(clip.get("length", 0.0)))
 	for seg in segments:
 		if bool(seg["loop"]):
-			_lines.append("段 %s：%.2fs – %.2fs（循环 %s – %s）" % [seg["name"], seg["start"], seg["end"], str(seg["start"]), str(seg["end"])])
+			_lines.append("段 %s：第 %d–%d 帧（%.2fs – %.2fs，循环）" % [seg["name"], int(round(float(seg["start"]) * _fps)), int(round(float(seg["end"]) * _fps)), seg["start"], seg["end"]])
 		else:
-			_lines.append("段 %s：%.2fs – %.2fs（一次性）" % [seg["name"], seg["start"], seg["end"]])
-	_fps = float(clip.get("sampleFps", clip.get("fps", 60.0)))
+			_lines.append("段 %s：第 %d–%d 帧（%.2fs – %.2fs，一次性）" % [seg["name"], int(round(float(seg["start"]) * _fps)), int(round(float(seg["end"]) * _fps)), seg["start"], seg["end"]])
 	var comp: Dictionary = clip.get("comp", {})
 	_comp_size = Vector2(float(comp.get("width", 1920)), float(comp.get("height", 1080)))
 	_comp_space_layers.clear()
@@ -538,7 +538,7 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 				if d > worst_d:
 					worst_d = d
 					worst = String(anim.track_get_path(i))
-			if worst_d > 0.5:
+			if worst_d > 0.02:
 				_lines.append("⚠ 循环段 %s 首末不一致：%s 差 %.2f（每圈都会跳）" % [seg_name, worst, worst_d])
 
 		lib.add_animation(seg_name, anim)
@@ -617,8 +617,9 @@ func _parse_segments(spec: String, total: float) -> Array:
 			var dash := range_txt.find("-")
 			if dash < 0:
 				continue
-			var a := float(range_txt.substr(0, dash).strip_edges())
-			var b := float(range_txt.substr(dash + 1).strip_edges())
+			# 填的是帧号，换算成秒
+			var a := float(range_txt.substr(0, dash).strip_edges()) / _fps
+			var b := float(range_txt.substr(dash + 1).strip_edges()) / _fps
 			if b <= a:
 				continue
 			var used := {}
@@ -919,7 +920,7 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 				if d > worst_d:
 					worst_d = d
 					worst = String(anim.track_get_path(i))
-			if worst_d > 0.5:
+			if worst_d > 0.02:
 				_lines.append("⚠ 循环段 %s 首末不一致：%s 差 %.2f（每圈都会跳）" % [seg_name, worst, worst_d])
 
 		lib.add_animation(seg_name, anim)
