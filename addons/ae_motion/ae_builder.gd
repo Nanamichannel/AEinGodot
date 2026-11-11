@@ -312,9 +312,12 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 		var s := float(seg["start"])
 		var e := float(seg["end"])
 		var loop := bool(seg["loop"])
+		var reps := int(seg.get("repeat", 0))
+		var copies := reps if reps > 1 else 1
+
 		var anim := Animation.new()
-		anim.length = maxf(e - s, 0.001)
-		if loop:
+		anim.length = maxf((e - s) * copies, 0.001)
+		if loop and copies == 1:
 			anim.loop_mode = Animation.LOOP_LINEAR
 
 		var seg_name := String(seg["name"])
@@ -332,6 +335,8 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 			var comp_space := bool(_comp_space_layers.get(int(L["index"]), false))
 
 			var kp := _slice(tk["position"], s, e, loop)
+			if copies > 1:
+				kp = _repeat_rows(kp, copies, e - s)
 			if _varies(kp, 3):
 				var t1 := anim.add_track(Animation.TYPE_VALUE)
 				anim.track_set_path(t1, NodePath(rel + ":position"))
@@ -346,6 +351,8 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 				tracks += 1
 
 			var kr := _slice(tk["rotation"], s, e, loop)
+			if copies > 1:
+				kr = _repeat_rows(kr, copies, e - s)
 			if _varies(kr, 2):
 				var t2 := anim.add_track(Animation.TYPE_VALUE)
 				anim.track_set_path(t2, NodePath(rel + ":rotation"))
@@ -360,6 +367,8 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 				tracks += 1
 
 			var ks := _slice(tk["scale"], s, e, loop)
+			if copies > 1:
+				ks = _repeat_rows(ks, copies, e - s)
 			if _varies(ks, 3):
 				var t3 := anim.add_track(Animation.TYPE_VALUE)
 				anim.track_set_path(t3, NodePath(rel + ":scale"))
@@ -375,6 +384,8 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 				tracks += 1
 
 			var ka := _slice(tk["alpha"], s, e, loop)
+			if copies > 1:
+				ka = _repeat_rows(ka, copies, e - s)
 			if _varies(ka, 2):
 				var t4 := anim.add_track(Animation.TYPE_VALUE)
 				anim.track_set_path(t4, NodePath(rel + ":self_modulate:a"))
@@ -423,9 +434,19 @@ func _parse_segments(spec: String, total: float) -> Array:
 			if part == "":
 				continue
 			var loop := false
-			if part.ends_with("*"):
-				loop = true
-				part = part.substr(0, part.length() - 1).strip_edges()
+			var repeat := 0
+			var star := part.find("*")
+			if star >= 0:
+				var tail := part.substr(star + 1).strip_edges()
+				part = part.substr(0, star).strip_edges()
+				if tail == "":
+					loop = true
+					repeat = 0
+				else:
+					var n := int(tail)
+					if n > 0:
+						loop = true
+						repeat = n
 			var nm := "seg"
 			var range_txt := part
 			var colon := part.find(":")
@@ -447,7 +468,7 @@ func _parse_segments(spec: String, total: float) -> Array:
 			while used.has(unique):
 				unique = "%s_%d" % [nm, idx]
 				idx += 1
-			segs.append({"name": unique, "start": a, "end": b, "loop": loop})
+			segs.append({"name": unique, "start": a, "end": b, "loop": loop, "repeat": repeat})
 
 	if segs.is_empty():
 		segs.append({"name": "play", "start": 0.0, "end": total, "loop": false})
@@ -589,5 +610,14 @@ func _apply_loop(data: Dictionary, s: float, e: float) -> void:
 	data["clip"]["length"] = dur
 
 
-
-
+func _repeat_rows(rows: Array, reps: int, dur: float) -> Array:
+	if reps <= 1:
+		return rows
+	var out: Array = []
+	for r in range(reps):
+		var off := int(round(r * dur * 1000.0))
+		for row in rows:
+			var nr: Array = row.duplicate()
+			nr[0] = int(nr[0]) + off
+			out.append(nr)
+	return out
