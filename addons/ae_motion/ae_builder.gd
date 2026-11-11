@@ -321,10 +321,7 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 		var e := float(seg["end"])
 		var loop := bool(seg["loop"])
 		var anim := Animation.new()
-		var dur := e - s
-		if loop:
-			dur += _frame_ms / 1000.0
-		anim.length = maxf(dur, 0.001)
+		anim.length = maxf(e - s, 0.001)
 		if loop:
 			anim.loop_mode = Animation.LOOP_LINEAR
 
@@ -395,6 +392,15 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 					keys += 1
 				tracks += 1
 
+		if loop:
+			var last_t := 0.0
+			for i in range(anim.get_track_count()):
+				var kc := anim.track_get_key_count(i)
+				if kc > 0:
+					last_t = maxf(last_t, anim.track_get_key_time(i, kc - 1))
+			if last_t > 0.0:
+				anim.length = last_t
+
 		lib.add_animation(seg_name, anim)
 
 	ap.add_animation_library("", lib)
@@ -424,9 +430,12 @@ func _slice(track: Array, s: float, e: float, loop: bool) -> Array:
 
 	if loop:
 		var first: Array = out[0]
-		# 追加一帧在区间之外，过渡多占一整帧，不压缩原有动作
+		# 闭合帧必须严格贴在上一帧之后一帧，否则间隔可能是两帧，看起来像跳
+		var close_ms := end_ms + int(round(_frame_ms))
+		if out.size() >= 2:
+			close_ms = int(out[out.size() - 1][0]) + int(round(_frame_ms))
 		var extra: Array = first.duplicate()
-		extra[0] = end_ms + int(round(_frame_ms))
+		extra[0] = close_ms
 		out.append(extra)
 	return out
 
