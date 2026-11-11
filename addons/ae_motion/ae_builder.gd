@@ -568,7 +568,7 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 			if worst_d > 0.02:
 				_lines.append("⚠ 循环段 %s 首末不一致：%s 差 %.2f（每圈都会跳）" % [seg_name, worst, worst_d])
 
-		lib.add_animation(seg_name, anim)
+			lib.add_animation(seg_name, anim)
 
 	ap.add_animation_library("", lib)
 	ap.root_node = NodePath("..")
@@ -830,9 +830,11 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 			var k3 := _slice(tk.get("rot3d", []), s, e, false)
 			var ks := _slice(tk["scale"], s, e, false)
 
-			var has_pos := _varies(kp, 3) or _varies(kz, 2)
-			var has_rot := _varies(kr, 2) or _varies(k3, 3)
-			var has_scl := _varies(ks, 3)
+			# 判断"这一段里有没有变化"要用整条轨道：整条动过、但这段时间是常量时，
+			# 也必须建一条单帧轨道，否则播放别的段以后这里会停在旧姿态
+			var has_pos := _varies(tk["position"], 3) or _varies(tk.get("posZ", []), 2)
+			var has_rot := _varies(tk["rotation"], 2) or _varies(tk.get("rot3d", []), 3)
+			var has_scl := _varies(tk["scale"], 3)
 			if not (has_pos or has_rot or has_scl):
 				continue
 
@@ -903,6 +905,17 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 							float(sr[1]) * m3.x, float(sr[2]) * m3.y, 1.0))
 						keys += 1
 
+			# 透明度：Sprite3D 走 modulate:a（之前 3D 路径完全没建这条轨道）
+			if _varies(tk["alpha"], 2):
+				var ka3 := _slice(tk["alpha"], s, e, false)
+				var ta := anim.add_track(Animation.TYPE_VALUE)
+				anim.track_set_path(ta, NodePath(rel + ":modulate:a"))
+				anim.track_set_interpolation_type(ta, Animation.INTERPOLATION_LINEAR)
+				for row in ka3:
+					anim.track_insert_key(ta, float(row[0]) / 1000.0, float(row[1]))
+					keys += 1
+				tracks += 1
+
 		# 2D 层：屏幕空间坐标 = 自身 + 父级链位置
 		for L in _layer_list:
 			if bool(L.get("threeD", false)) or bool(L.get("isStatic", true)):
@@ -967,6 +980,7 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 					worst = String(anim.track_get_path(i))
 			if worst_d > 0.02:
 				_lines.append("⚠ 循环段 %s 首末不一致：%s 差 %.2f（每圈都会跳）" % [seg_name, worst, worst_d])
+
 
 		lib.add_animation(seg_name, anim)
 
