@@ -428,6 +428,19 @@ func _slice(track: Array, s: float, e: float, loop: bool) -> Array:
 
 	out[0][0] = 0
 
+	if loop and out.size() >= 2:
+		# 去漂移：把首末差值按时间比例平摊到整段，末帧自然回到首帧。
+		# 15 秒里 21px 的漂移，摊到 900 帧是每帧 0.024px，肉眼不可见；
+		# 这样闭合帧就不需要"一帧内猛拉"，突变消失。
+		var f0: Array = out[0]
+		var ln: Array = out[out.size() - 1]
+		var total_ms := float(end_ms)
+		if total_ms > 0.0:
+			for row in out:
+				var w := float(row[0]) / total_ms
+				for j in range(1, row.size()):
+					row[j] = float(row[j]) - (float(ln[j]) - float(f0[j])) * w
+
 	if loop:
 		var first: Array = out[0]
 		# 闭合帧必须严格贴在上一帧之后一帧，否则间隔可能是两帧，看起来像跳
