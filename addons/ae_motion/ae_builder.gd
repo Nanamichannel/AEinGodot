@@ -15,6 +15,7 @@ var _nodes := {}
 var _layer_list := []
 var _root: Node
 var _root2d: Node2D
+var _world: Node3D
 var _use3d := false
 var _missing := []
 var _missing_frames := []
@@ -79,9 +80,31 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 
 	_use3d = bool(clip.get("hasCamera", false))
 	if _use3d:
-		_root = Node3D.new()
+		# 3D 渲进 SubViewport，再当一张图贴回 2D 画布，
+		# 否则 2D 画布永远盖在 3D 上面（Godot 的绘制顺序）
+		_root = Node2D.new()
+		var screen_layer := CanvasLayer.new()
+		screen_layer.name = "3D画面"
+		screen_layer.layer = 0
+		_root.add_child(screen_layer)
+		var holder := SubViewportContainer.new()
+		holder.name = "3D容器"
+		holder.size = Vector2(_comp_size.x, _comp_size.y)
+		holder.stretch = true
+		screen_layer.add_child(holder)
+		var vp := SubViewport.new()
+		vp.name = "3D视口"
+		vp.size = Vector2i(int(_comp_size.x), int(_comp_size.y))
+		vp.transparent_bg = true
+		vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		holder.add_child(vp)
+		_world = Node3D.new()
+		_world.name = "3D世界"
+		vp.add_child(_world)
+
 		var canvas := CanvasLayer.new()
 		canvas.name = "2D层"
+		canvas.layer = 5
 		_root.add_child(canvas)
 		_root2d = Node2D.new()
 		_root2d.name = "Sprites2D"
@@ -248,8 +271,8 @@ func _node_for(idx: int) -> Node:
 		p.add_child(n)
 		n.name = _unique_name(p, String(n.name), n)
 	else:
-		_root.add_child(n)
-		n.name = _unique_name(_root, String(n.name), n)
+		_world.add_child(n)
+		n.name = _unique_name(_world, String(n.name), n)
 
 	return n
 
@@ -495,6 +518,29 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 					keys += 1
 				tracks += 1
 
+		# 循环段：首末值不一致 = 每圈都会跳，直接报出来
+		if bool(seg["loop"]) and copies == 1:
+			var worst := ""
+			var worst_d := 0.0
+			for i in range(anim.get_track_count()):
+				var nk := anim.track_get_key_count(i)
+				if nk < 2:
+					continue
+				var v0 = anim.track_get_key_value(i, 0)
+				var v1 = anim.track_get_key_value(i, nk - 1)
+				var d := 0.0
+				if v0 is Vector3:
+					d = (v0 as Vector3).distance_to(v1)
+				elif v0 is Vector2:
+					d = (v0 as Vector2).distance_to(v1)
+				else:
+					d = absf(float(v0) - float(v1))
+				if d > worst_d:
+					worst_d = d
+					worst = String(anim.track_get_path(i))
+			if worst_d > 0.5:
+				_lines.append("⚠ 循环段 %s 首末不一致：%s 差 %.2f（每圈都会跳）" % [seg_name, worst, worst_d])
+
 		lib.add_animation(seg_name, anim)
 
 	ap.add_animation_library("", lib)
@@ -657,8 +703,8 @@ func _node_for3(idx: int) -> Node:
 		p.add_child(n)
 		n.name = _unique_name(p, String(n.name), n)
 	else:
-		_root.add_child(n)
-		n.name = _unique_name(_root, String(n.name), n)
+		_world.add_child(n)
+		n.name = _unique_name(_world, String(n.name), n)
 
 	return n
 
@@ -684,7 +730,7 @@ func _make_camera3(data: Dictionary) -> void:
 		cam.fov = rad_to_deg(2.0 * atan((_comp_size.y * 0.5) / zoom))
 		cam.keep_aspect = Camera3D.KEEP_HEIGHT
 	cam.current = true
-	_root.add_child(cam)
+	_world.add_child(cam)
 	cam.look_at_from_position(cam.position, Vector3(
 		float(ip[0]) - _comp_size.x * 0.5,
 		-(float(ip[1]) - _comp_size.y * 0.5),
@@ -852,6 +898,29 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 					anim.track_insert_key(ta, float(row[0]) / 1000.0, float(row[1]))
 					keys += 1
 				tracks += 1
+
+		# 循环段：首末值不一致 = 每圈都会跳，直接报出来
+		if bool(seg["loop"]) and copies == 1:
+			var worst := ""
+			var worst_d := 0.0
+			for i in range(anim.get_track_count()):
+				var nk := anim.track_get_key_count(i)
+				if nk < 2:
+					continue
+				var v0 = anim.track_get_key_value(i, 0)
+				var v1 = anim.track_get_key_value(i, nk - 1)
+				var d := 0.0
+				if v0 is Vector3:
+					d = (v0 as Vector3).distance_to(v1)
+				elif v0 is Vector2:
+					d = (v0 as Vector2).distance_to(v1)
+				else:
+					d = absf(float(v0) - float(v1))
+				if d > worst_d:
+					worst_d = d
+					worst = String(anim.track_get_path(i))
+			if worst_d > 0.5:
+				_lines.append("⚠ 循环段 %s 首末不一致：%s 差 %.2f（每圈都会跳）" % [seg_name, worst, worst_d])
 
 		lib.add_animation(seg_name, anim)
 
