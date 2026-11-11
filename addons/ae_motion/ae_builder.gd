@@ -1274,20 +1274,55 @@ func _blend_mode_for(mode: String) -> int:
 			return -1
 
 
+const BLEND_SHADER_PATH := "res://addons/ae_motion/blend_screen.gdshader"
+
+# 需要屏幕纹理的模式 → 着色器里的常量
+const BLEND_SHADER_MODES := {
+	"SCREEN": 1, "OVERLAY": 2, "SOFT_LIGHT": 3, "HARD_LIGHT": 4,
+	"COLOR_DODGE": 5, "COLOR_BURN": 6, "DIFFERENCE": 7, "EXCLUSION": 8,
+	"DARKEN": 9, "LIGHTEN": 10, "VIVID_LIGHT": 11, "LINEAR_LIGHT": 12,
+	"PIN_LIGHT": 13, "HARD_MIX": 14, "DIVIDE": 15,
+}
+
+
 func _apply_blend2d(n: Node, L: Dictionary) -> void:
 	var blend: Dictionary = L.get("blend", {})
-	var mode := String(blend.get("mode", "NORMAL"))
+	var mode := String(blend.get("mode", "NORMAL")).to_upper()
+	var role := String(blend.get("role", "normal"))
+
+	# 第一档：Godot 内置混合，零开销
 	var bm := _blend_mode_for(mode)
-	if bm < 0:
-		if String(blend.get("role", "normal")) != "normal":
-			_blend_skipped.append("%s(%s)" % [String(L["name"]), mode])
+	if bm >= 0 and n is CanvasItem:
+		var mat := CanvasItemMaterial.new()
+		mat.blend_mode = bm
+		(n as CanvasItem).material = mat
+		_blend_applied.append("%s(%s)" % [String(L["name"]), mode])
 		return
-	if not (n is CanvasItem):
+
+	# 第二档：需要底图的模式，走屏幕纹理着色器
+	if BLEND_SHADER_MODES.has(mode) and n is CanvasItem:
+		var sh: Shader = load(BLEND_SHADER_PATH)
+		if sh == null:
+			_blend_skipped.append("%s(%s,缺着色器)" % [String(L["name"]), mode])
+			return
+		var sm := ShaderMaterial.new()
+		sm.shader = sh
+		sm.set_shader_parameter("mode", int(BLEND_SHADER_MODES[mode]))
+		(n as CanvasItem).material = sm
+
+		# 该层之前必须有一次 BackBufferCopy，否则拿不到底图
+		var parent := n.get_parent()
+		if parent != null:
+			var bb := BackBufferCopy.new()
+			bb.name = "BBCopy_" + String(n.name)
+			bb.copy_mode = BackBufferCopy.COPY_MODE_VIEWPORT
+			parent.add_child(bb)
+			parent.move_child(bb, n.get_index())
+		_blend_applied.append("%s(%s,着色器)" % [String(L["name"]), mode])
 		return
-	var mat := CanvasItemMaterial.new()
-	mat.blend_mode = bm
-	(n as CanvasItem).material = mat
-	_blend_applied.append("%s(%s)" % [String(L["name"]), mode])
+
+	if role != "normal":
+		_blend_skipped.append("%s(%s)" % [String(L["name"]), mode])
 
 
 func _blend_mode_for3(mode: String) -> int:
