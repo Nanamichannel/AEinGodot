@@ -95,7 +95,7 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 		_root = Node2D.new()
 		var screen_layer := CanvasLayer.new()
 		screen_layer.name = "3D画面"
-		screen_layer.layer = 0
+		screen_layer.layer = 1
 		_root.add_child(screen_layer)
 		var holder := SubViewportContainer.new()
 		holder.name = "3D容器"
@@ -122,7 +122,7 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 
 		var canvas := CanvasLayer.new()
 		canvas.name = "2D层"
-		canvas.layer = 5
+		canvas.layer = 2
 		_root.add_child(canvas)
 		_root2d = Node2D.new()
 		_root2d.name = "Sprites2D"
