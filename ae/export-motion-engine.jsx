@@ -56,6 +56,53 @@
     // 2. Small helpers
     // ------------------------------------------------------------------
 
+    function flattenShape(shape) {
+        if (!shape || !shape.vertices) return [];
+        var v = shape.vertices;
+        var it = shape.inTangents;
+        var ot = shape.outTangents;
+        var closed = shape.closed;
+        var out = [];
+        var n = v.length;
+        var segs = closed ? n : n - 1;
+        var STEPS = 8;
+        for (var i = 0; i < segs; i++) {
+            var i2 = (i + 1) % n;
+            var p0 = v[i], p3 = v[i2];
+            var c1 = [p0[0] + ot[i][0], p0[1] + ot[i][1]];
+            var c2 = [p3[0] + it[i2][0], p3[1] + it[i2][1]];
+            for (var s = 0; s < STEPS; s++) {
+                var tt = s / STEPS;
+                var u = 1 - tt;
+                var x = u*u*u*p0[0] + 3*u*u*tt*c1[0] + 3*u*tt*tt*c2[0] + tt*tt*tt*p3[0];
+                var y = u*u*u*p0[1] + 3*u*u*tt*c1[1] + 3*u*tt*tt*c2[1] + tt*tt*tt*p3[1];
+                out.push([Math.round(x * 10) / 10, Math.round(y * 10) / 10]);
+            }
+        }
+        return out;
+    }
+
+    function maskModeName(maskGroup) {
+        try {
+            var m = maskGroup.property("ADBE Mask Mode");
+            if (!m) return "ADD";
+            var v = m.value;
+            if (v === MaskMode.SUBTRACT) return "SUBTRACT";
+            if (v === MaskMode.INTERSECT) return "INTERSECT";
+            if (v === MaskMode.LIGHTEN) return "LIGHTEN";
+            if (v === MaskMode.DARKEN) return "DARKEN";
+            if (v === MaskMode.DIFFERENCE) return "DIFFERENCE";
+            return "ADD";
+        } catch (e) { return "ADD"; }
+    }
+
+    function maskInverted(maskGroup) {
+        try {
+            var inv = maskGroup.property("ADBE Inverted Mask");
+            return inv ? (inv.value === true) : false;
+        } catch (e) { return false; }
+    }
+
     function layerNameList(list) {
         var names = [];
         for (var i = 0; i < list.length; i++) {
@@ -546,6 +593,44 @@
         }
         entry.frames = framesDir;
         entry.framesLoop = framesLoop;
+
+        // 蒙版：把路径采样成多边形（只导第一帧；动的蒙版会标记 animated）
+        try {
+            var mp = layer.property("ADBE Mask Parade");
+            if (mp && mp.numProperties > 0) {
+                var masks = [];
+                for (var mi = 1; mi <= mp.numProperties; mi++) {
+                    var mg = mp.property(mi);
+                    var mshape = mg.property("ADBE Mask Shape");
+                    if (!mshape) continue;
+                    var m0 = mshape.valueAtTime(0, false);
+                    var m1 = mshape.valueAtTime(duration * 0.6, false);
+                    var animated = false;
+                    if (m0 && m1 && m0.vertices && m1.vertices &&
+                        m0.vertices.length === m1.vertices.length) {
+                        for (var vi = 0; vi < m0.vertices.length; vi++) {
+                            if (Math.abs(m0.vertices[vi][0] - m1.vertices[vi][0]) > 0.5 ||
+                                Math.abs(m0.vertices[vi][1] - m1.vertices[vi][1]) > 0.5) {
+                                animated = true;
+                                break;
+                            }
+                        }
+                    } else if (m0 && m1) {
+                        animated = true;
+                    }
+                    var pts = flattenShape(m0);
+                    masks.push({
+                        name: String(mg.name),
+                        mode: maskModeName(mg),
+                        inverted: maskInverted(mg),
+                        animated: animated,
+                        points: pts
+                    });
+                }
+                entry.masks = masks;
+            }
+        } catch (em) {}
+
         // 相机层：导入端靠它还原透视
         if (type === "camera") {
             try {

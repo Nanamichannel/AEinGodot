@@ -24,6 +24,7 @@ var _mid_3d_z := 0
 var _missing := []
 var _missing_frames := []
 var _blend_skipped := []
+var _mask_skipped := []
 var _blend_applied := []
 var _heavy_frames := []
 var _frames_size_mismatch := []
@@ -43,6 +44,7 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	_missing.clear()
 	_missing_frames.clear()
 	_blend_skipped.clear()
+	_mask_skipped.clear()
 	_blend_applied.clear()
 	_heavy_frames.clear()
 	_frames_size_mismatch.clear()
@@ -292,6 +294,12 @@ func _node_for(idx: int) -> Node:
 	_apply_blend2d(n, L)
 
 	n.name = _base_name(String(L["name"]))
+
+	# 蒙版：用 Polygon2D 包一层，clip_children 裁掉外面的部分
+	var wrap := _apply_masks2d(n, L)
+	if wrap != null:
+		n = wrap
+
 	_nodes[idx] = n
 
 	var pid = L.get("parent")
@@ -304,6 +312,53 @@ func _node_for(idx: int) -> Node:
 		n.name = _unique_name(_root, String(n.name), n)
 
 	return n
+
+
+func _apply_masks2d(child: Node, L: Dictionary) -> Node:
+	var masks: Array = L.get("masks", [])
+	if masks.is_empty() or not (child is CanvasItem):
+		return null
+	for m in masks:
+		if bool(m.get("animated", false)):
+			_mask_skipped.append("%s(%s,动的蒙版)" % [String(L["name"]), String(m.get("name", "?"))])
+			return null
+		if String(m.get("mode", "ADD")) != "ADD" or bool(m.get("inverted", false)):
+			_mask_skipped.append("%s(%s,%s%s)" % [String(L["name"]), String(m.get("name", "?")),
+				String(m.get("mode", "ADD")), " 反转" if bool(m.get("inverted", false)) else ""])
+			return null
+
+	# 只有一个普通 ADD 蒙版才处理
+	var pts: Array = masks[0].get("points", [])
+	if pts.size() < 3:
+		return null
+
+	var anchor: Array = L["asset"]["anchor"]
+	_mask_skipped.append("%s(蒙版待接入)" % String(L["name"]))
+	if true:
+		return null
+	var poly := Polygon2D.new()
+	poly.name = String(child.name) + "_mask"
+	poly.color = Color(1, 1, 1, 1)
+	poly.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
+	var arr := PackedVector2Array()
+	for p2 in pts:
+		arr.append(Vector2(float(p2[0]) - float(anchor[0]), float(p2[1]) - float(anchor[1])))
+	poly.polygon = arr
+
+	# 子层变成局部零变换
+	var ci := child as CanvasItem
+	var orig_pos: Vector2 = ci.position
+	var orig_rot: float = ci.rotation
+	var orig_scale: Vector2 = ci.scale
+	ci.position = Vector2.ZERO
+	ci.rotation = 0.0
+	ci.scale = Vector2.ONE
+	poly.position = orig_pos
+	poly.rotation = orig_rot
+	poly.scale = orig_scale
+
+	poly.add_child(child)
+	return poly
 
 
 func _build_sprite_frames(folder: String, loop_anim: bool = true) -> SpriteFrames:
