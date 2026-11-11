@@ -595,12 +595,14 @@ func _slice(track: Array, s: float, e: float, loop: bool) -> Array:
 	var out: Array = []
 	if track.is_empty():
 		return out
-	var end_ms := int(round((e - s) * 1000.0))
+	# 全程用毫秒整数比较：秒级浮点会让"最后一帧"落在区间外 1/3 毫秒处被切掉
+	var s_ms := int(round(s * 1000.0))
+	var e_ms := int(round(e * 1000.0))
 	for row in track:
-		var t := float(row[0]) / 1000.0
-		if t + 0.0001 >= s and t - 0.0001 <= e:
+		var ms := int(round(float(row[0])))
+		if ms >= s_ms and ms <= e_ms:
 			var nr: Array = row.duplicate()
-			nr[0] = int(round((t - s) * 1000.0))
+			nr[0] = ms - s_ms
 			out.append(nr)
 
 	if out.is_empty():
