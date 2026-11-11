@@ -61,6 +61,9 @@
 | `neutral` | `{mul, add}`：乘数/加法通道的中性值。**初始化纹理必须填这个值** |
 | `channelPlan` | `rgba` 整层 / `multiplier` 只走一通道乘数 |
 | `isStatic` | true 表示整段不动，`tracks` 里只有 1 个采样点 |
+| `threeD` | 3D 图层标记。配合 `tracks.rot3d` / `tracks.posZ` 和 `clip.hasCamera` 使用 |
+| `camera` | 仅相机层：`{position:[x,y,z], interest:[x,y], zoom}`。`zoom` 是像素焦距，`fov = 2·atan((h/2)/zoom)` |
+| `asset.color` / `asset.solid` | 仅纯色层：填充色 `[r,g,b]`（0..1）。引擎侧用白图染色，尺寸靠 scale |
 | `firstLastDelta` | 首末帧差（px / deg / ratio / 0..1）。做循环时看它，不为 0 就会跳 |
 | `threeD` / `timeRemap` / `effectCount` / `maskCount` | 特性标记，对应 `unsupported` 条目 |
 
@@ -74,6 +77,8 @@
 | `rotation` | `[t, deg]` | 度，顺时针为正（AE 与 Godot 2D 同向，**不用取负**） |
 | `scale` | `[t, sx, sy]` | 比值，`1.0 = 100%`（AE 的 100 已经除过了） |
 | `alpha` | `[t, a]` | `0..1`（AE 的 100 已经除过了） |
+| `rot3d` | `[t, rx, ry]` | 度，仅 3D 图层。转 Godot 时三轴都取反 |
+| `posZ` | `[t, z]` | px，仅 3D 图层。AE 的 +Z 远离相机，Godot 用 `-z` |
 
 引擎侧一律**线性插值**即可——采样点已经是最终结果，不要再套贝塞尔。
 
