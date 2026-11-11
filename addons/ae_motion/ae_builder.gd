@@ -382,6 +382,23 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 			var ks := _slice(tk["scale"], s, e, loop)
 			if copies > 1:
 				ks = _repeat_rows(ks, copies, e - s)
+			# 3D 层在正交投影下（AE 无相机时）表现为各方向压缩：
+			# X 轴旋转压 Y，Y 轴旋转压 X。这样不用建 Node3D 也是精确的。
+			var k3 := _slice(tk.get("rot3d", []), s, e, false)
+			if k3.size() > 1 and _varies(k3, 3):
+				if ks.size() == 1:
+					var grown: Array = []
+					for r3 in k3:
+						grown.append([r3[0], ks[0][1], ks[0][2]])
+					ks = grown
+				for idx in range(ks.size()):
+					var r3r := _row_at(k3, float(ks[idx][0]))
+					if r3r.is_empty():
+						continue
+					var rx := deg_to_rad(float(r3r[1]))
+					var ry := deg_to_rad(float(r3r[2]))
+					ks[idx][1] = float(ks[idx][1]) * cos(ry)
+					ks[idx][2] = float(ks[idx][2]) * cos(rx)
 			if _varies(ks, 3):
 				var t3 := anim.add_track(Animation.TYPE_VALUE)
 				anim.track_set_path(t3, NodePath(rel + ":scale"))
@@ -647,3 +664,16 @@ func _repeat_rows(rows: Array, reps: int, dur: float) -> Array:
 			nr[0] = int(nr[0]) + off
 			out.append(nr)
 	return out
+
+
+func _row_at(rows: Array, ms: float) -> Array:
+	if rows.is_empty():
+		return []
+	var best: Array = rows[0]
+	var bd := absf(float(rows[0][0]) - ms)
+	for row in rows:
+		var d := absf(float(row[0]) - ms)
+		if d < bd:
+			bd = d
+			best = row
+	return best

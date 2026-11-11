@@ -39,8 +39,7 @@
         includeStatic: true, // keep layers that never animate
         maxSamples: 6000,   // down-sample above this many frames
         // One JSON per composition lands here, named after the composition.
-        // 导出目录：默认放桌面，改成你自己的路径也行
-        outputDir: Folder.desktop.fsName + "/AE-Motion-Export"
+        outputDir: "N:/媒体/AfterEffects/AE-Motion-Export"
     };
 
     // ------------------------------------------------------------------
@@ -332,7 +331,7 @@
             tr = null;
         }
 
-        var tracks = { position: [], rotation: [], scale: [], alpha: [] };
+        var tracks = { position: [], rotation: [], scale: [], alpha: [], rot3d: [] };
         if (!tr) return tracks;
 
         // The anchor point can be animated (that is how an image "moves"
@@ -355,6 +354,14 @@
             var R = propValue(tr, "ADBE Rotate Z", t);
             var S = propValue(tr, "ADBE Scale", t);
             var A = propValue(tr, "ADBE Opacity", t);
+
+            var is3D = false;
+            try { is3D = (layer.threeDLayer === true); } catch (e) {}
+            if (is3D) {
+                var RX = propValue(tr, "ADBE Rotate X", t);
+                var RY = propValue(tr, "ADBE Rotate Y", t);
+                tracks.rot3d.push([ms, r4(RX === null ? 0 : RX), r4(RY === null ? 0 : RY)]);
+            }
 
             var px = (P && P.length > 0) ? P[0] : 0;
             var py = (P && P.length > 1) ? P[1] : 0;
@@ -536,7 +543,8 @@
             alpha: channelSeam(a0)
         };
 
-        var isStatic = (isFlat(p0) && isFlat(r0) && isFlat(s0) && isFlat(a0));
+        var r3 = tracks.rot3d;
+        var isStatic = (isFlat(p0) && isFlat(r0) && isFlat(s0) && isFlat(a0) && isFlat(r3));
 
         if (!CONFIG.includeStatic && isStatic) continue;
 
@@ -545,7 +553,8 @@
                 position: compressStatic(p0),
                 rotation: compressStatic(r0),
                 scale: compressStatic(s0),
-                alpha: compressStatic(a0)
+                alpha: compressStatic(a0),
+                rot3d: compressStatic(r3)
             };
             entry.isStatic = true;
         } else {
@@ -553,7 +562,8 @@
                 position: p0,
                 rotation: r0,
                 scale: s0,
-                alpha: a0
+                alpha: a0,
+                rot3d: r3
             };
         }
         entry.firstLastDelta = seam;
