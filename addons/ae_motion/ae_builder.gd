@@ -25,6 +25,7 @@ var _missing := []
 var _missing_frames := []
 var _blend_skipped := []
 var _mask_skipped := []
+var _mask_applied := []
 var _blend_applied := []
 var _heavy_frames := []
 var _frames_size_mismatch := []
@@ -45,6 +46,7 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	_missing_frames.clear()
 	_blend_skipped.clear()
 	_mask_skipped.clear()
+	_mask_applied.clear()
 	_blend_applied.clear()
 	_heavy_frames.clear()
 	_frames_size_mismatch.clear()
@@ -333,32 +335,29 @@ func _apply_masks2d(child: Node, L: Dictionary) -> Node:
 		return null
 
 	var anchor: Array = L["asset"]["anchor"]
-	_mask_skipped.append("%s(蒙版待接入)" % String(L["name"]))
-	if true:
+	# 用 discard 着色器做裁剪（clip_children 对没有贴图的节点无效）
+	var sh: Shader = load("res://addons/ae_motion/mask_poly.gdshader")
+	if sh == null:
+		_mask_skipped.append("%s(缺 mask_poly.gdshader)" % String(L["name"]))
 		return null
-	var poly := Polygon2D.new()
-	poly.name = String(child.name) + "_mask"
-	poly.color = Color(1, 1, 1, 1)
-	poly.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
+	var ci0 := child as CanvasItem
+	if ci0.material != null:
+		_mask_skipped.append("%s(同时有混合模式,暂不支持组合)" % String(L["name"]))
+		return null
+	var sm := ShaderMaterial.new()
+	sm.shader = sh
 	var arr := PackedVector2Array()
 	for p2 in pts:
-		arr.append(Vector2(float(p2[0]) - float(anchor[0]), float(p2[1]) - float(anchor[1])))
-	poly.polygon = arr
-
-	# 子层变成局部零变换
-	var ci := child as CanvasItem
-	var orig_pos: Vector2 = ci.position
-	var orig_rot: float = ci.rotation
-	var orig_scale: Vector2 = ci.scale
-	ci.position = Vector2.ZERO
-	ci.rotation = 0.0
-	ci.scale = Vector2.ONE
-	poly.position = orig_pos
-	poly.rotation = orig_rot
-	poly.scale = orig_scale
-
-	poly.add_child(child)
-	return poly
+		if arr.size() >= 128:
+			break
+		arr.append(Vector2(float(p2[0]), float(p2[1])))
+	sm.set_shader_parameter("points", arr)
+	sm.set_shader_parameter("count", arr.size())
+	sm.set_shader_parameter("layer_size", Vector2(float(L["asset"]["width"]), float(L["asset"]["height"])))
+	sm.set_shader_parameter("layer_anchor", Vector2(float(anchor[0]), float(anchor[1])))
+	ci0.material = sm
+	_mask_applied.append("%s(%d 点)" % [String(L["name"]), arr.size()])
+	return null
 
 
 func _build_sprite_frames(folder: String, loop_anim: bool = true) -> SpriteFrames:
