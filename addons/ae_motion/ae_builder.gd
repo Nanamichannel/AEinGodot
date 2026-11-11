@@ -28,7 +28,7 @@ var _comp_size := Vector2(1920, 1080)
 var _comp_space_layers := {}
 
 
-func build(json_path: String, art_dir: String, out_scene: String, frames_dir: String = "", loop_start: float = -1.0, loop_end: float = -1.0) -> Dictionary:
+func build(json_path: String, art_dir: String, out_scene: String, frames_dir: String = "", segments_spec: String = "") -> Dictionary:
 	_by_index.clear()
 	_nodes.clear()
 	_missing.clear()
@@ -63,10 +63,12 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 		return _fail("JSON 里没有 layers")
 
 	var clip: Dictionary = data["clip"]
-	if loop_start >= 0.0 and loop_end > loop_start:
-		_apply_loop(data, loop_start, loop_end)
-		clip = data["clip"]
-		_lines.append("循环区间：%.2fs – %.2fs（长度 %.2fs，末帧对齐首帧）" % [loop_start, loop_end, loop_end - loop_start])
+	var segments := _parse_segments(segments_spec, float(clip.get("length", 0.0)))
+	for seg in segments:
+		if bool(seg["loop"]):
+			_lines.append("段 %s：%.2fs – %.2fs（循环，末帧对齐首帧）" % [seg["name"], seg["start"], seg["end"]])
+		else:
+			_lines.append("段 %s：%.2fs – %.2fs（一次性）" % [seg["name"], seg["start"], seg["end"]])
 	_fps = float(clip.get("sampleFps", clip.get("fps", 60.0)))
 	var comp: Dictionary = clip.get("comp", {})
 	_comp_size = Vector2(float(comp.get("width", 1920)), float(comp.get("height", 1080)))
@@ -80,7 +82,7 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	for L in sorted:
 		_node_for(int(L["index"]))
 
-	var stats := _build_animation(data)
+	var stats := _build_animation(data, segments)
 	var err := _save()
 
 	_lines.append("========== 完成 ==========")
@@ -290,90 +292,169 @@ func _texture_for(L: Dictionary) -> Texture2D:
 	return null
 
 
-func _build_animation(data: Dictionary) -> Array:
+func _build_animation(data: Dictionary, segments: Array) -> Array:
 	var ap := AnimationPlayer.new()
 	ap.name = "AnimationPlayer"
 	_root.add_child(ap)
 
-	var anim := Animation.new()
-	anim.length = float(data["clip"].get("length", 0.0))
 	var lib := AnimationLibrary.new()
-	lib.add_animation("play", anim)
-	ap.add_animation_library("", lib)
-	ap.root_node = NodePath("..")
-	ap.autoplay = "play"
-
 	var animated := 0
 	var tracks := 0
 	var keys := 0
+	var first_name := ""
 
 	for L in _layer_list:
-		if bool(L.get("isStatic", true)):
-			continue
-		var n = _nodes.get(int(L["index"]))
-		if n == null:
-			continue
-		animated += 1
-		var rel := String(_root.get_path_to(n))
-		var tk: Dictionary = L["tracks"]
+		if not bool(L.get("isStatic", true)):
+			animated += 1
 
-		if _varies(tk["position"], 3):
-			var t1 := anim.add_track(Animation.TYPE_VALUE)
-			anim.track_set_path(t1, NodePath(rel + ":position"))
-			anim.track_set_interpolation_type(t1, Animation.INTERPOLATION_LINEAR)
-			var p_first: Array = tk["position"][0]
-			var delta := bool(_comp_space_layers.get(int(L["index"]), false))
-			for s in tk["position"]:
-				var px := float(s[1])
-				var py := float(s[2])
-				if delta:
-					px -= float(p_first[1])
-					py -= float(p_first[2])
-				anim.track_insert_key(t1, float(s[0]) / 1000.0, Vector2(px, py))
-				keys += 1
-			tracks += 1
+	for seg in segments:
+		var s := float(seg["start"])
+		var e := float(seg["end"])
+		var loop := bool(seg["loop"])
+		var anim := Animation.new()
+		anim.length = maxf(e - s, 0.001)
+		if loop:
+			anim.loop_mode = Animation.LOOP_LINEAR
 
-		if _varies(tk["rotation"], 2):
-			var t2 := anim.add_track(Animation.TYPE_VALUE)
-			anim.track_set_path(t2, NodePath(rel + ":rotation"))
-			anim.track_set_interpolation_type(t2, Animation.INTERPOLATION_LINEAR)
-			var r_first := float(tk["rotation"][0][1])
-			var rdelta := bool(_comp_space_layers.get(int(L["index"]), false))
-			for s in tk["rotation"]:
-				var rv := float(s[1])
-				if rdelta:
-					rv -= r_first
-				anim.track_insert_key(t2, float(s[0]) / 1000.0, deg_to_rad(rv))
-				keys += 1
-			tracks += 1
+		var seg_name := String(seg["name"])
+		if first_name == "":
+			first_name = seg_name
 
-		if _varies(tk["scale"], 3):
-			var t3 := anim.add_track(Animation.TYPE_VALUE)
-			anim.track_set_path(t3, NodePath(rel + ":scale"))
-			anim.track_set_interpolation_type(t3, Animation.INTERPOLATION_LINEAR)
-			var s_first: Array = tk["scale"][0]
-			var sdelta := bool(_comp_space_layers.get(int(L["index"]), false))
-			for s in tk["scale"]:
-				var sxv := float(s[1])
-				var syv := float(s[2])
-				if sdelta:
-					sxv = sxv / maxf(float(s_first[1]), 0.0001)
-					syv = syv / maxf(float(s_first[2]), 0.0001)
-				anim.track_insert_key(t3, float(s[0]) / 1000.0, Vector2(sxv, syv))
-				keys += 1
-			tracks += 1
+		for L in _layer_list:
+			if bool(L.get("isStatic", true)):
+				continue
+			var n = _nodes.get(int(L["index"]))
+			if n == null:
+				continue
+			var rel := String(_root.get_path_to(n))
+			var tk: Dictionary = L["tracks"]
+			var comp_space := bool(_comp_space_layers.get(int(L["index"]), false))
 
-		if _varies(tk["alpha"], 2):
-			var t4 := anim.add_track(Animation.TYPE_VALUE)
-			anim.track_set_path(t4, NodePath(rel + ":self_modulate:a"))
-			anim.track_set_interpolation_type(t4, Animation.INTERPOLATION_LINEAR)
-			for s in tk["alpha"]:
-				anim.track_insert_key(t4, float(s[0]) / 1000.0, float(s[1]))
-				keys += 1
-			tracks += 1
+			var kp := _slice(tk["position"], s, e, loop)
+			if _varies(kp, 3):
+				var t1 := anim.add_track(Animation.TYPE_VALUE)
+				anim.track_set_path(t1, NodePath(rel + ":position"))
+				anim.track_set_interpolation_type(t1, Animation.INTERPOLATION_LINEAR)
+				var base_p := Vector2(float(kp[0][1]), float(kp[0][2]))
+				for row in kp:
+					var v := Vector2(float(row[1]), float(row[2]))
+					if comp_space:
+						v -= base_p
+					anim.track_insert_key(t1, float(row[0]) / 1000.0, v)
+					keys += 1
+				tracks += 1
+
+			var kr := _slice(tk["rotation"], s, e, loop)
+			if _varies(kr, 2):
+				var t2 := anim.add_track(Animation.TYPE_VALUE)
+				anim.track_set_path(t2, NodePath(rel + ":rotation"))
+				anim.track_set_interpolation_type(t2, Animation.INTERPOLATION_LINEAR)
+				var base_r := float(kr[0][1])
+				for row in kr:
+					var rv := float(row[1])
+					if comp_space:
+						rv -= base_r
+					anim.track_insert_key(t2, float(row[0]) / 1000.0, deg_to_rad(rv))
+					keys += 1
+				tracks += 1
+
+			var ks := _slice(tk["scale"], s, e, loop)
+			if _varies(ks, 3):
+				var t3 := anim.add_track(Animation.TYPE_VALUE)
+				anim.track_set_path(t3, NodePath(rel + ":scale"))
+				anim.track_set_interpolation_type(t3, Animation.INTERPOLATION_LINEAR)
+				var base_sx := maxf(float(ks[0][1]), 0.0001)
+				var base_sy := maxf(float(ks[0][2]), 0.0001)
+				for row in ks:
+					var sv := Vector2(float(row[1]), float(row[2]))
+					if comp_space:
+						sv = Vector2(sv.x / base_sx, sv.y / base_sy)
+					anim.track_insert_key(t3, float(row[0]) / 1000.0, sv)
+					keys += 1
+				tracks += 1
+
+			var ka := _slice(tk["alpha"], s, e, loop)
+			if _varies(ka, 2):
+				var t4 := anim.add_track(Animation.TYPE_VALUE)
+				anim.track_set_path(t4, NodePath(rel + ":self_modulate:a"))
+				anim.track_set_interpolation_type(t4, Animation.INTERPOLATION_LINEAR)
+				for row in ka:
+					anim.track_insert_key(t4, float(row[0]) / 1000.0, float(row[1]))
+					keys += 1
+				tracks += 1
+
+		lib.add_animation(seg_name, anim)
+
+	ap.add_animation_library("", lib)
+	ap.root_node = NodePath("..")
+	if first_name != "":
+		ap.autoplay = first_name
 
 	return [animated, tracks, keys]
 
+
+func _slice(track: Array, s: float, e: float, loop: bool) -> Array:
+	var out: Array = []
+	var end_ms := int(round((e - s) * 1000.0))
+	for row in track:
+		var t := float(row[0]) / 1000.0
+		if t + 0.0001 >= s and t - 0.0001 <= e:
+			var nr: Array = row.duplicate()
+			nr[0] = int(round((t - s) * 1000.0))
+			out.append(nr)
+
+	if out.is_empty():
+		var only: Array = track[0].duplicate()
+		only[0] = 0
+		out.append(only)
+
+	out[0][0] = 0
+
+	if loop:
+		var first: Array = out[0]
+		var last: Array = out[out.size() - 1]
+		if int(last[0]) >= end_ms - 1:
+			last[0] = end_ms
+			for i in range(1, last.size()):
+				last[i] = first[i]
+		else:
+			var extra: Array = first.duplicate()
+			extra[0] = end_ms
+			out.append(extra)
+
+	return out
+
+
+func _parse_segments(spec: String, total: float) -> Array:
+	var segs: Array = []
+	var txt := spec.strip_edges()
+	if txt != "":
+		for chunk in txt.split(";", false):
+			var part := chunk.strip_edges()
+			if part == "":
+				continue
+			var loop := false
+			if part.ends_with("*"):
+				loop = true
+				part = part.substr(0, part.length() - 1).strip_edges()
+			var nm := "seg"
+			var range_txt := part
+			var colon := part.find(":")
+			if colon >= 0:
+				nm = part.substr(0, colon).strip_edges()
+				range_txt = part.substr(colon + 1).strip_edges()
+			var dash := range_txt.find("-")
+			if dash < 0:
+				continue
+			var a := float(range_txt.substr(0, dash).strip_edges())
+			var b := float(range_txt.substr(dash + 1).strip_edges())
+			if b <= a:
+				continue
+			segs.append({"name": nm, "start": a, "end": b, "loop": loop})
+
+	if segs.is_empty():
+		segs.append({"name": "play", "start": 0.0, "end": total, "loop": false})
+	return segs
 
 func _save() -> int:
 	_set_owner(_root, _root)
