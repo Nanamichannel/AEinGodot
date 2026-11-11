@@ -9,6 +9,7 @@ var _art_edit: LineEdit
 var _frames_edit: LineEdit
 var _segments: LineEdit
 var _merge_check: CheckBox
+var _autoplay_check: CheckBox
 var _merge_parent: LineEdit
 var _out_edit: LineEdit
 var _log: TextEdit

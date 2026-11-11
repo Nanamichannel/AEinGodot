@@ -18,6 +18,7 @@ var _root2d: Node2D
 var _root2d_back: Node2D
 var _parented2d := {}
 var _merge_mode := false
+var _autoplay := true
 var _world: Node3D
 var _cam_node: Camera3D
 var _use3d := false
@@ -41,7 +42,7 @@ var _comp_size := Vector2(1920, 1080)
 var _comp_space_layers := {}
 
 
-func build(json_path: String, art_dir: String, out_scene: String, frames_dir: String = "", segments_spec: String = "", merge_target: Node = null) -> Dictionary:
+func build(json_path: String, art_dir: String, out_scene: String, frames_dir: String = "", segments_spec: String = "", merge_target: Node = null, autoplay: bool = true) -> Dictionary:
 	_by_index.clear()
 	_nodes.clear()
 	_missing.clear()
@@ -79,6 +80,7 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 		return _fail("JSON 里没有 layers")
 
 	_merge_mode = (merge_target != null)
+	_autoplay = true   # 一律自动播放，导入后直接能看到效果
 	var clip: Dictionary = data["clip"]
 	_fps = float(clip.get("sampleFps", clip.get("fps", 60.0)))
 	var segments := _parse_segments(segments_spec, float(clip.get("length", 0.0)))
@@ -692,11 +694,10 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 			names.append(String(seg2["name"]))
 		seq.set("player_path", NodePath("../AnimationPlayer"))
 		seq.set("sequence", names)
-		if _merge_mode:
-			seq.set("autoplay", false)
+		seq.set("autoplay", _autoplay)
 		_root.add_child(seq)
 		ap.autoplay = ""
-	elif first_name != "" and not _merge_mode:
+	elif first_name != "" and _autoplay:
 		ap.autoplay = first_name
 
 	return [animated, tracks, keys]
@@ -1158,11 +1159,10 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 			names.append(String(seg2["name"]))
 		seq.set("player_path", NodePath("../AnimationPlayer"))
 		seq.set("sequence", names)
-		if _merge_mode:
-			seq.set("autoplay", false)
+		seq.set("autoplay", _autoplay)
 		_root.add_child(seq)
 		ap.autoplay = ""
-	elif first_name != "" and not _merge_mode:
+	elif first_name != "" and _autoplay:
 		ap.autoplay = first_name
 
 	return [animated, tracks, keys]
