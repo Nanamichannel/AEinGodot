@@ -23,6 +23,7 @@ var _mid_3d_z := 0
 var _missing := []
 var _missing_frames := []
 var _blend_skipped := []
+var _blend_applied := []
 var _heavy_frames := []
 var _frames_size_mismatch := []
 var _lines: PackedStringArray = []
@@ -41,6 +42,7 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	_missing.clear()
 	_missing_frames.clear()
 	_blend_skipped.clear()
+	_blend_applied.clear()
 	_heavy_frames.clear()
 	_frames_size_mismatch.clear()
 	_lines = PackedStringArray()
@@ -279,13 +281,14 @@ func _node_for(idx: int) -> Node:
 		var r0: Array = L["tracks"]["rotation"][0]
 		n.rotation = deg_to_rad(float(r0[1]))
 		var s0: Array = L["tracks"]["scale"][0]
-		n.scale = Vector2(float(s0[1]), float(s0[2]))
+		var szn := _solid_size(L)
+		n.scale = Vector2(float(s0[1]) * szn.x, float(s0[2]) * szn.y)
 	var a0: Array = L["tracks"]["alpha"][0]
-	n.self_modulate = Color(1.0, 1.0, 1.0, float(a0[1]))
+	var scn = _solid_color(L)
+	var basec2 := Color(1.0, 1.0, 1.0) if scn == null else (scn as Color)
+	n.self_modulate = Color(basec2.r, basec2.g, basec2.b, float(a0[1]))
 
-	var blend: Dictionary = L.get("blend", {})
-	if String(blend.get("role", "normal")) != "normal":
-		_blend_skipped.append("%s(%s)" % [String(L["name"]), String(blend.get("mode", "?"))])
+	_apply_blend2d(n, L)
 
 	n.name = _base_name(String(L["name"]))
 	_nodes[idx] = n
@@ -296,8 +299,8 @@ func _node_for(idx: int) -> Node:
 		p.add_child(n)
 		n.name = _unique_name(p, String(n.name), n)
 	else:
-		_world.add_child(n)
-		n.name = _unique_name(_world, String(n.name), n)
+		_root.add_child(n)
+		n.name = _unique_name(_root, String(n.name), n)
 
 	return n
 
@@ -696,6 +699,9 @@ func _node_for3(idx: int) -> Node:
 		sp.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 		# 同深度的透明精灵按这个排序：AE 里图层号越小越靠前
 		sp.render_priority = 100 - int(L["z"])
+		var bl3: Dictionary = L.get("blend", {})
+		if String(bl3.get("role", "normal")) != "normal":
+			_blend_skipped.append("%s(%s,3D)" % [String(L["name"]), String(bl3.get("mode", "?"))])
 		n = sp
 
 	var p0: Array = L["tracks"]["position"][0]
@@ -1226,6 +1232,7 @@ func _node_for2d(idx: int) -> Node:
 	var basec := Color(1.0, 1.0, 1.0) if sc2 == null else (sc2 as Color)
 	sp.self_modulate = Color(basec.r, basec.g, basec.b, float(al[1]))
 
+	_apply_blend2d(sp, L)
 	sp.name = _base_name(String(L["name"]))
 	_nodes[idx] = sp
 	host.add_child(sp)
@@ -1254,3 +1261,61 @@ func _solid_size(L: Dictionary) -> Vector2:
 	if _solid_color(L) == null:
 		return Vector2.ONE
 	return Vector2(maxf(float(L["asset"]["width"]), 1.0), maxf(float(L["asset"]["height"]), 1.0))
+
+func _blend_mode_for(mode: String) -> int:
+	match mode.to_upper():
+		"ADD", "LINEAR_DODGE", "LINEAR_LIGHT", "COLOR_DODGE":
+			return CanvasItemMaterial.BLEND_MODE_ADD
+		"MULTIPLY", "COLOR_BURN":
+			return CanvasItemMaterial.BLEND_MODE_MUL
+		"SUBTRACT", "DIFFERENCE":
+			return CanvasItemMaterial.BLEND_MODE_SUB
+		_:
+			return -1
+
+
+func _apply_blend2d(n: Node, L: Dictionary) -> void:
+	var blend: Dictionary = L.get("blend", {})
+	var mode := String(blend.get("mode", "NORMAL"))
+	var bm := _blend_mode_for(mode)
+	if bm < 0:
+		if String(blend.get("role", "normal")) != "normal":
+			_blend_skipped.append("%s(%s)" % [String(L["name"]), mode])
+		return
+	if not (n is CanvasItem):
+		return
+	var mat := CanvasItemMaterial.new()
+	mat.blend_mode = bm
+	(n as CanvasItem).material = mat
+	_blend_applied.append("%s(%s)" % [String(L["name"]), mode])
+
+
+func _blend_mode_for3(mode: String) -> int:
+	match mode.to_upper():
+		"ADD", "LINEAR_DODGE", "LINEAR_LIGHT", "COLOR_DODGE":
+			return BaseMaterial3D.BLEND_MODE_ADD
+		"MULTIPLY", "COLOR_BURN":
+			return BaseMaterial3D.BLEND_MODE_MUL
+		"SUBTRACT", "DIFFERENCE":
+			return BaseMaterial3D.BLEND_MODE_SUB
+		_:
+			return -1
+
+
+func _apply_blend3(sp: Sprite3D, L: Dictionary) -> void:
+	var blend: Dictionary = L.get("blend", {})
+	var mode := String(blend.get("mode", "NORMAL"))
+	var bm := _blend_mode_for3(mode)
+	if bm < 0:
+		if String(blend.get("role", "normal")) != "normal":
+			_blend_skipped.append("%s(%s)" % [String(L["name"]), mode])
+		return
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = sp.texture
+	mat.albedo_color = sp.modulate
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.blend_mode = bm
+	sp.material_override = mat
+	_blend_applied.append("%s(%s)" % [String(L["name"]), mode])
