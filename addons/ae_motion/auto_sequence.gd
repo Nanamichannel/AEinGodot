@@ -1,15 +1,18 @@
 extends Node
 ##
-## auto_sequence.gd —— 按顺序播放 AnimationPlayer 里的多段动画，最后一段循环。
+## auto_sequence.gd —— 按顺序播放 AnimationPlayer 里的多段动画。
 ## 由导入器自动挂上，不需要手写代码。
 ##
-## 切段方式：等 animation_finished，推迟一帧后直接 play 下一段。
-## 因为段与段的值在设计上就是连续的，一帧的间隔在画面上看不出来，
-## 而且不会像 queue() 那样在播放器内部重置时停顿。
+## 行为：
+##   - 除最后一段外，播完自动接下一段（等 animation_finished，推迟一帧再 play）
+##   - 最后一段如果带 *（循环），就一直循环
+##   - 最后一段如果不带 *，播完停在最后一帧，不回开头
 ##
 
 @export var player_path: NodePath
 @export var sequence: PackedStringArray = PackedStringArray()
+## 最后一段播完后是否停在末帧（true）还是回到开头（false）
+@export var hold_last_frame := true
 
 var _ap: AnimationPlayer
 
@@ -27,8 +30,18 @@ func _ready() -> void:
 
 func _on_finished(anim_name: String) -> void:
 	var i := sequence.find(anim_name)
-	if i < 0 or i + 1 >= sequence.size():
+	if i < 0:
 		return
+
+	# 最后一段：停住，不要回开头
+	if i + 1 >= sequence.size():
+		if hold_last_frame and is_instance_valid(_ap):
+			var last := _ap.get_animation(anim_name)
+			if last != null:
+				_ap.seek(last.length, true)
+			_ap.pause()
+		return
+
 	await get_tree().process_frame
 	if is_instance_valid(_ap):
 		_ap.play(sequence[i + 1])
