@@ -24,6 +24,7 @@ var _art_dir := ""
 var _frames_root := ""
 var _out_scene := ""
 var _fps := 60.0
+var _frame_ms := 16.666667
 var _comp_size := Vector2(1920, 1080)
 var _comp_space_layers := {}
 
@@ -320,7 +321,10 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 		var e := float(seg["end"])
 		var loop := bool(seg["loop"])
 		var anim := Animation.new()
-		anim.length = maxf(e - s, 0.001)
+		var dur := e - s
+		if loop:
+			dur += _frame_ms / 1000.0
+		anim.length = maxf(dur, 0.001)
 		if loop:
 			anim.loop_mode = Animation.LOOP_LINEAR
 
@@ -420,12 +424,9 @@ func _slice(track: Array, s: float, e: float, loop: bool) -> Array:
 
 	if loop:
 		var first: Array = out[0]
-		# 去掉正好落在末尾的采样，改成"追加一帧"（值=首帧），
-		# 这样会从上一个采样平滑走过去，而不是把末帧的值直接改掉（那是瞬移）。
-		if out.size() > 1 and int(out[out.size() - 1][0]) >= end_ms - 1:
-			out.remove_at(out.size() - 1)
+		# 追加一帧在区间之外，过渡多占一整帧，不压缩原有动作
 		var extra: Array = first.duplicate()
-		extra[0] = end_ms
+		extra[0] = end_ms + int(round(_frame_ms))
 		out.append(extra)
 	return out
 
