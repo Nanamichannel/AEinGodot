@@ -1367,8 +1367,19 @@ func _node_for2d(idx: int) -> Node:
 			ts = sp.texture.get_size()
 		sp.offset = -(Vector2(float(a[0]), float(a[1])) - (Vector2(wj, hj) - ts))
 
+	# 父级也是 2D 层时，保留层级（父级动，子层跟着动）；否则按合成坐标摆放
 	var p0: Array = L["tracks"]["position"][0]
-	sp.position = Vector2(float(p0[1]), float(p0[2])) + _ancestor_offset(L)
+	var pid2 = L.get("parent")
+	var parent2d: Node = null
+	if pid2 != null and int(pid2) > 0:
+		_node_for(int(pid2))   # 先确保父级节点已创建
+		var pn = _nodes.get(int(pid2))
+		if pn != null and pn is CanvasItem and not (pn is Node3D):
+			parent2d = pn
+	if parent2d != null:
+		sp.position = Vector2(float(p0[1]), float(p0[2]))
+	else:
+		sp.position = Vector2(float(p0[1]), float(p0[2])) + _ancestor_offset(L)
 	sp.z_index = 100 - int(L["z"])
 
 	var s0: Array = L["tracks"]["scale"][0]
@@ -1383,8 +1394,12 @@ func _node_for2d(idx: int) -> Node:
 	_apply_blend2d(sp, L)
 	sp.name = _base_name(String(L["name"]))
 	_nodes[idx] = sp
-	host.add_child(sp)
-	sp.name = _unique_name(host, String(sp.name), sp)
+	if parent2d != null:
+		parent2d.add_child(sp)
+		sp.name = _unique_name(parent2d, String(sp.name), sp)
+	else:
+		host.add_child(sp)
+		sp.name = _unique_name(host, String(sp.name), sp)
 	return sp
 
 func _solid_color(L: Dictionary) -> Variant:
