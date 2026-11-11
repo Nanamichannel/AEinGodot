@@ -16,6 +16,7 @@ var _layer_list := []
 var _root: Node
 var _root2d: Node2D
 var _root2d_back: Node2D
+var _parented2d := {}
 var _world: Node3D
 var _cam_node: Camera3D
 var _use3d := false
@@ -123,6 +124,7 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 		back.name = "2D后层"
 		back.layer = -1
 		_root.add_child(back)
+		_parented2d.clear()
 		_root2d_back = Node2D.new()
 		_root2d_back.name = "Sprites2D后"
 		back.add_child(_root2d_back)
@@ -569,7 +571,7 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 			if n2 == null or not (n2 is Sprite2D):
 				continue
 			var rel2 := String(_root.get_path_to(n2))
-			var off := _ancestor_offset(L)
+			var off := Vector2.ZERO if _parented2d.has(int(L["index"])) else _ancestor_offset(L)
 			var t2k: Dictionary = L["tracks"]
 
 			var kp2 := _slice(t2k["position"], s, e, false)
@@ -1032,7 +1034,7 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 			if n2 == null or not (n2 is Sprite2D):
 				continue
 			var rel2 := String(_root.get_path_to(n2))
-			var off := _ancestor_offset(L)
+			var off := Vector2.ZERO if _parented2d.has(int(L["index"])) else _ancestor_offset(L)
 			var t2k: Dictionary = L["tracks"]
 
 			var kp2 := _slice(t2k["position"], s, e, false)
@@ -1396,6 +1398,7 @@ func _node_for2d(idx: int) -> Node:
 	_nodes[idx] = sp
 	if parent2d != null:
 		parent2d.add_child(sp)
+		_parented2d[idx] = true
 		sp.name = _unique_name(parent2d, String(sp.name), sp)
 	else:
 		host.add_child(sp)
