@@ -15,8 +15,11 @@ var _nodes := {}
 var _layer_list := []
 var _root: Node
 var _root2d: Node2D
+var _root2d_back: Node2D
 var _world: Node3D
 var _use3d := false
+var _white_tex: Texture2D
+var _mid_3d_z := 0
 var _missing := []
 var _missing_frames := []
 var _blend_skipped := []
@@ -79,6 +82,13 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	_comp_space_layers.clear()
 
 	_use3d = bool(clip.get("hasCamera", false))
+	var zs: Array = []
+	for L0 in _layer_list:
+		if bool(L0.get("threeD", false)) and int(L0["z"]) > 1:
+			zs.append(int(L0["z"]))
+	if not zs.is_empty():
+		zs.sort()
+		_mid_3d_z = int(zs[zs.size() / 2])
 	if _use3d:
 		# 3D 渲进 SubViewport，再当一张图贴回 2D 画布，
 		# 否则 2D 画布永远盖在 3D 上面（Godot 的绘制顺序）
@@ -101,6 +111,14 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 		_world = Node3D.new()
 		_world.name = "3D世界"
 		vp.add_child(_world)
+
+		var back := CanvasLayer.new()
+		back.name = "2D后层"
+		back.layer = -1
+		_root.add_child(back)
+		_root2d_back = Node2D.new()
+		_root2d_back.name = "Sprites2D后"
+		back.add_child(_root2d_back)
 
 		var canvas := CanvasLayer.new()
 		canvas.name = "2D层"
@@ -226,17 +244,24 @@ func _node_for(idx: int) -> Node:
 	else:
 		var sp := Sprite2D.new()
 		sp.centered = false
-		sp.texture = _texture_for(L)
 		sp.z_index = -int(L["z"])
 
 		var asset: Dictionary = L["asset"]
 		var anchor: Array = asset["anchor"]
 		var wj := float(asset["width"])
 		var hj := float(asset["height"])
-		var tex_size := Vector2(wj, hj)
-		if sp.texture != null:
-			tex_size = sp.texture.get_size()
-		sp.offset = -(Vector2(float(anchor[0]), float(anchor[1])) - (Vector2(wj, hj) - tex_size))
+		var scol2 = _solid_color(L)
+		if scol2 != null:
+			sp.texture = _white_texture()
+			sp.self_modulate = scol2
+			sp.offset = Vector2(-float(anchor[0]) / maxf(wj, 1.0), -float(anchor[1]) / maxf(hj, 1.0))
+			sp.scale = Vector2(maxf(wj, 1.0), maxf(hj, 1.0))
+		else:
+			sp.texture = _texture_for(L)
+			var tex_size := Vector2(wj, hj)
+			if sp.texture != null:
+				tex_size = sp.texture.get_size()
+			sp.offset = -(Vector2(float(anchor[0]), float(anchor[1])) - (Vector2(wj, hj) - tex_size))
 		n = sp
 
 	# AE 的层序是全局的：必须关掉相对父级累加，否则子层会被父级的 z 拖到底下
@@ -346,7 +371,7 @@ func _texture_for(L: Dictionary) -> Texture2D:
 			f = dir.get_next()
 		dir.list_dir_end()
 
-	if bool(L.get("enabled", true)):
+	if bool(L.get("enabled", true)) and _solid_color(L) == null:
 		_missing.append(_base_name(String(L["name"])))
 	return null
 
@@ -456,10 +481,12 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 				anim.track_set_interpolation_type(t3, Animation.INTERPOLATION_LINEAR)
 				var base_sx := maxf(float(ks[0][1]), 0.0001)
 				var base_sy := maxf(float(ks[0][2]), 0.0001)
+				var smul := _solid_size(L)
 				for row in ks:
 					var sv := Vector2(float(row[1]), float(row[2]))
 					if comp_space:
 						sv = Vector2(sv.x / base_sx, sv.y / base_sy)
+					sv = Vector2(sv.x * smul.x, sv.y * smul.y)
 					anim.track_insert_key(t3, float(row[0]) / 1000.0, sv)
 					keys += 1
 				tracks += 1
@@ -649,10 +676,21 @@ func _node_for3(idx: int) -> Node:
 		n = Node3D.new()
 	else:
 		var sp := Sprite3D.new()
-		sp.texture = _texture_for(L)
+		var scol = _solid_color(L)
 		sp.pixel_size = 1.0
 		sp.centered = false
-		sp.offset = Vector2(-float(anchor[0]), -float(anchor[1]))
+		sp.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		if scol != null:
+			# 纯色层：1×1 白图染色，尺寸靠 scale 撑开
+			sp.texture = _white_texture()
+			sp.modulate = scol
+			var sw := maxf(float(L["asset"]["width"]), 1.0)
+			var sh := maxf(float(L["asset"]["height"]), 1.0)
+			sp.offset = Vector2(-float(anchor[0]) / sw, -float(anchor[1]) / sh)
+			sp.scale = Vector3(sw, sh, 1.0)
+		else:
+			sp.texture = _texture_for(L)
+			sp.offset = Vector2(-float(anchor[0]), -float(anchor[1]))
 		sp.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 		# 同深度的透明精灵按这个排序：AE 里图层号越小越靠前
 		sp.render_priority = 100 - int(L["z"])
@@ -677,7 +715,8 @@ func _node_for3(idx: int) -> Node:
 		node3.position = Vector3(float(p0[1]), -float(p0[2]), -z0)
 
 	var s0: Array = L["tracks"]["scale"][0]
-	node3.scale = Vector3(float(s0[1]), float(s0[2]), 1.0)
+	var sz0 := _solid_size(L)
+	node3.scale = Vector3(float(s0[1]) * sz0.x, float(s0[2]) * sz0.y, 1.0)
 
 	var rx0 := 0.0
 	var ry0 := 0.0
@@ -693,7 +732,9 @@ func _node_for3(idx: int) -> Node:
 
 	if n is Sprite3D:
 		var a0: Array = L["tracks"]["alpha"][0]
-		(n as Sprite3D).modulate = Color(1.0, 1.0, 1.0, float(a0[1]))
+		var sc0 = _solid_color(L)
+		var base0 := Color(1.0, 1.0, 1.0) if sc0 == null else (sc0 as Color)
+		(n as Sprite3D).modulate = Color(base0.r, base0.g, base0.b, float(a0[1]))
 
 	n.name = _base_name(String(L["name"]))
 	_nodes[idx] = n
@@ -854,8 +895,9 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 				if t_scl >= 0:
 					var sr := _row_at(ks, ms)
 					if not sr.is_empty():
+						var m3 := _solid_size(L)
 						anim.track_insert_key(t_scl, ms / 1000.0, Vector3(
-							float(sr[1]), float(sr[2]), 1.0))
+							float(sr[1]) * m3.x, float(sr[2]) * m3.y, 1.0))
 						keys += 1
 
 		# 2D 层：屏幕空间坐标 = 自身 + 父级链位置
@@ -1133,23 +1175,34 @@ func _node_for2d(idx: int) -> Node:
 		return stub
 
 	var sp := Sprite2D.new()
-	sp.texture = _texture_for(L)
 	sp.centered = false
+	var host: Node2D = _root2d
+	if int(L["z"]) < int(_mid_3d_z):
+		host = _root2d_back
 
 	var a: Array = L["asset"]["anchor"]
 	var wj := float(L["asset"]["width"])
 	var hj := float(L["asset"]["height"])
-	var ts := Vector2(wj, hj)
-	if sp.texture != null:
-		ts = sp.texture.get_size()
-	sp.offset = -(Vector2(float(a[0]), float(a[1])) - (Vector2(wj, hj) - ts))
+	var sc2 = _solid_color(L)
+	if sc2 != null:
+		sp.texture = _white_texture()
+		sp.self_modulate = sc2
+		sp.offset = Vector2(-float(a[0]) / maxf(wj, 1.0), -float(a[1]) / maxf(hj, 1.0))
+		sp.scale = Vector2(maxf(wj, 1.0), maxf(hj, 1.0))
+	else:
+		sp.texture = _texture_for(L)
+		var ts := Vector2(wj, hj)
+		if sp.texture != null:
+			ts = sp.texture.get_size()
+		sp.offset = -(Vector2(float(a[0]), float(a[1])) - (Vector2(wj, hj) - ts))
 
 	var p0: Array = L["tracks"]["position"][0]
 	sp.position = Vector2(float(p0[1]), float(p0[2])) + _ancestor_offset(L)
 	sp.z_index = 100 - int(L["z"])
 
 	var s0: Array = L["tracks"]["scale"][0]
-	sp.scale = Vector2(float(s0[1]), float(s0[2]))
+	var sz2 := _solid_size(L)
+	sp.scale = Vector2(float(s0[1]) * sz2.x, float(s0[2]) * sz2.y)
 	var r0: Array = L["tracks"]["rotation"][0]
 	sp.rotation = deg_to_rad(float(r0[1]))
 	var al: Array = L["tracks"]["alpha"][0]
@@ -1157,6 +1210,26 @@ func _node_for2d(idx: int) -> Node:
 
 	sp.name = _base_name(String(L["name"]))
 	_nodes[idx] = sp
-	_root2d.add_child(sp)
-	sp.name = _unique_name(_root2d, String(sp.name), sp)
+	host.add_child(sp)
+	sp.name = _unique_name(host, String(sp.name), sp)
 	return sp
+
+func _solid_color(L: Dictionary) -> Variant:
+	var a: Dictionary = L.get("asset", {})
+	if a.has("color"):
+		var c: Array = a["color"]
+		return Color(float(c[0]), float(c[1]), float(c[2]), 1.0)
+	return null
+
+
+func _white_texture() -> Texture2D:
+	if _white_tex == null:
+		var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+		img.fill(Color.WHITE)
+		_white_tex = ImageTexture.create_from_image(img)
+	return _white_tex
+
+func _solid_size(L: Dictionary) -> Vector2:
+	if _solid_color(L) == null:
+		return Vector2.ONE
+	return Vector2(maxf(float(L["asset"]["width"]), 1.0), maxf(float(L["asset"]["height"]), 1.0))

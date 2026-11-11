@@ -550,6 +550,15 @@
             } catch (ec) {}
         }
 
+        // 纯色层：没有图片，导出填充色（引擎侧用白图染色）
+        try {
+            if (layer.source && layer.source.mainSource && layer.source.mainSource.color) {
+                var col = layer.source.mainSource.color;
+                entry.asset.color = [r4(col[0]), r4(col[1]), r4(col[2])];
+                entry.asset.solid = true;
+            }
+        } catch (ecol) {}
+
         // flags
         try {
             entry.threeD = (layer.threeDLayer === true);
