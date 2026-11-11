@@ -303,6 +303,16 @@
         return info;
     }
 
+    function cameraZoomAt(layer, t) {
+        var z = 0;
+        try {
+            var g = layer.property("ADBE Camera Options Group");
+            if (g) z = g.property("ADBE Camera Zoom").valueAtTime(t, false);
+        } catch (e) { z = 0; }
+        if (!z || z <= 0) z = readCameraZoom(layer);
+        return z;
+    }
+
     function readCameraZoom(layer) {
         var z = 0;
         try {
@@ -546,6 +556,23 @@
                     interest: [r4(poi[0]), r4(poi[1])],
                     zoom: r4(readCameraZoom(layer))
                 };
+                // 逐帧采样：位置 / 目标点 / 焦距 / 滚转
+                var cTracks = { position: [], interest: [], zoom: [], roll: [] };
+                var camGroup = layer.property("ADBE Transform Group");
+                var camStep = 1 / fps;
+                var camCount = Math.floor(duration * fps) + 1;
+                for (var ci = 0; ci < camCount; ci++) {
+                    var ct = ci * camStep;
+                    if (ct > duration) ct = duration;
+                    var cms = Math.round(ct * 1000);
+                    var cpos = propValue(camGroup, "ADBE Position", ct);
+                    var cpoi = propValue(camGroup, "ADBE Anchor Point", ct);
+                    var czoom = cameraZoomAt(layer, ct);
+                    if (cpos) cTracks.position.push([cms, r4(cpos[0]), r4(cpos[1]), r4(cpos[2])]);
+                    if (cpoi) cTracks.interest.push([cms, r4(cpoi[0]), r4(cpoi[1]), r4(cpoi[2])]);
+                    cTracks.zoom.push([cms, r4(czoom)]);
+                }
+                entry.cameraTracks = cTracks;
                 doc_has_camera = true;
             } catch (ec) {}
         }

@@ -17,6 +17,7 @@ var _root: Node
 var _root2d: Node2D
 var _root2d_back: Node2D
 var _world: Node3D
+var _cam_node: Camera3D
 var _use3d := false
 var _white_tex: Texture2D
 var _mid_3d_z := 0
@@ -571,7 +572,53 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 			if worst_d > 0.02:
 				_lines.append("⚠ 循环段 %s 首末不一致：%s 差 %.2f（每圈都会跳）" % [seg_name, worst, worst_d])
 
-			lib.add_animation(seg_name, anim)
+			# 相机关键帧：位置 / 朝向（由目标点算出欧拉角）/ 焦距
+		if _cam_node != null:
+			var ct: Dictionary = {}
+			for L2 in _layer_list:
+				if String(L2.get("type", "")) == "camera" and L2.has("cameraTracks"):
+					ct = L2["cameraTracks"]
+					break
+			if not ct.is_empty():
+				var ck: Array = _slice(ct.get("position", []), s, e, false)
+				if ck.size() > 1:
+					var relc := String(_root.get_path_to(_cam_node))
+					var tp := anim.add_track(Animation.TYPE_VALUE)
+					anim.track_set_path(tp, NodePath(relc + ":position"))
+					anim.track_set_interpolation_type(tp, Animation.INTERPOLATION_LINEAR)
+					var tr := anim.add_track(Animation.TYPE_VALUE)
+					anim.track_set_path(tr, NodePath(relc + ":rotation"))
+					anim.track_set_interpolation_type(tr, Animation.INTERPOLATION_LINEAR)
+					var tf := anim.add_track(Animation.TYPE_VALUE)
+					anim.track_set_path(tf, NodePath(relc + ":fov"))
+					anim.track_set_interpolation_type(tf, Animation.INTERPOLATION_LINEAR)
+
+					for row in ck:
+						var ms2 := float(row[0])
+						var pos := Vector3(float(row[1]) - _comp_size.x * 0.5,
+							-(float(row[2]) - _comp_size.y * 0.5),
+							-float(row[3]))
+						var ir := _row_at(ct.get("interest", []), ms2)
+						var tgt := Vector3(0.0, 0.0, 0.0)
+						if ir.size() >= 4:
+							tgt = Vector3(float(ir[1]) - _comp_size.x * 0.5,
+								-(float(ir[2]) - _comp_size.y * 0.5),
+								-float(ir[3]))
+						var euler := Vector3(0.0, 0.0, 0.0)
+						var dir := tgt - pos
+						if dir.length() > 0.0001:
+							euler = Basis.looking_at(dir.normalized(), Vector3.UP).get_euler()
+						var zr2 := _row_at(ct.get("zoom", []), ms2)
+						var zoom := float(zr2[1]) if zr2.size() >= 2 else 0.0
+						var fov := 75.0
+						if zoom > 0.0:
+							fov = rad_to_deg(2.0 * atan((_comp_size.y * 0.5) / zoom))
+						anim.track_insert_key(tp, ms2 / 1000.0, pos)
+						anim.track_insert_key(tr, ms2 / 1000.0, euler)
+						anim.track_insert_key(tf, ms2 / 1000.0, fov)
+						keys += 3
+
+		lib.add_animation(seg_name, anim)
 
 	ap.add_animation_library("", lib)
 	ap.root_node = NodePath("..")
@@ -782,6 +829,7 @@ func _make_camera3(data: Dictionary) -> void:
 	cam.current = true
 	_world.add_child(cam)
 	cam.make_current()
+	_cam_node = cam
 	cam.look_at_from_position(cam.position, Vector3(
 		float(ip[0]) - _comp_size.x * 0.5,
 		-(float(ip[1]) - _comp_size.y * 0.5),
@@ -987,6 +1035,52 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 			if worst_d > 0.02:
 				_lines.append("⚠ 循环段 %s 首末不一致：%s 差 %.2f（每圈都会跳）" % [seg_name, worst, worst_d])
 
+
+		# 相机关键帧：位置 / 朝向（由目标点算出欧拉角）/ 焦距
+		if _cam_node != null:
+			var ct: Dictionary = {}
+			for L2 in _layer_list:
+				if String(L2.get("type", "")) == "camera" and L2.has("cameraTracks"):
+					ct = L2["cameraTracks"]
+					break
+			if not ct.is_empty():
+				var ck: Array = _slice(ct.get("position", []), s, e, false)
+				if ck.size() > 1:
+					var relc := String(_root.get_path_to(_cam_node))
+					var tp := anim.add_track(Animation.TYPE_VALUE)
+					anim.track_set_path(tp, NodePath(relc + ":position"))
+					anim.track_set_interpolation_type(tp, Animation.INTERPOLATION_LINEAR)
+					var tr := anim.add_track(Animation.TYPE_VALUE)
+					anim.track_set_path(tr, NodePath(relc + ":rotation"))
+					anim.track_set_interpolation_type(tr, Animation.INTERPOLATION_LINEAR)
+					var tf := anim.add_track(Animation.TYPE_VALUE)
+					anim.track_set_path(tf, NodePath(relc + ":fov"))
+					anim.track_set_interpolation_type(tf, Animation.INTERPOLATION_LINEAR)
+
+					for row in ck:
+						var ms2 := float(row[0])
+						var pos := Vector3(float(row[1]) - _comp_size.x * 0.5,
+							-(float(row[2]) - _comp_size.y * 0.5),
+							-float(row[3]))
+						var ir := _row_at(ct.get("interest", []), ms2)
+						var tgt := Vector3(0.0, 0.0, 0.0)
+						if ir.size() >= 4:
+							tgt = Vector3(float(ir[1]) - _comp_size.x * 0.5,
+								-(float(ir[2]) - _comp_size.y * 0.5),
+								-float(ir[3]))
+						var euler := Vector3(0.0, 0.0, 0.0)
+						var dir := tgt - pos
+						if dir.length() > 0.0001:
+							euler = Basis.looking_at(dir.normalized(), Vector3.UP).get_euler()
+						var zr2 := _row_at(ct.get("zoom", []), ms2)
+						var zoom := float(zr2[1]) if zr2.size() >= 2 else 0.0
+						var fov := 75.0
+						if zoom > 0.0:
+							fov = rad_to_deg(2.0 * atan((_comp_size.y * 0.5) / zoom))
+						anim.track_insert_key(tp, ms2 / 1000.0, pos)
+						anim.track_insert_key(tr, ms2 / 1000.0, euler)
+						anim.track_insert_key(tf, ms2 / 1000.0, fov)
+						keys += 3
 
 		lib.add_animation(seg_name, anim)
 
