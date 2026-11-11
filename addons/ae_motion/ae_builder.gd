@@ -547,7 +547,7 @@ func _node_for3(idx: int) -> Node:
 		sp.texture = _texture_for(L)
 		sp.pixel_size = 1.0
 		sp.centered = false
-		sp.offset = Vector2(-float(anchor[0]), float(anchor[1]))
+		sp.offset = Vector2(-float(anchor[0]), -float(anchor[1]))
 		sp.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 		n = sp
 
@@ -558,10 +558,31 @@ func _node_for3(idx: int) -> Node:
 		z0 = float(pz[0][1])
 
 	var node3 := n as Node3D
-	node3.position = Vector3(
-		float(p0[1]) - _comp_size.x * 0.5,
-		-(float(p0[2]) - _comp_size.y * 0.5),
-		-z0)
+	var pid0 = L.get("parent")
+	var is_root_level := (pid0 == null or int(pid0) <= 0)
+	if is_root_level:
+		node3.position = Vector3(
+			float(p0[1]) - _comp_size.x * 0.5,
+			-(float(p0[2]) - _comp_size.y * 0.5),
+			-z0)
+	else:
+		# 子节点：父级已经是局部空间，这里只做 Y/Z 轴翻转
+		node3.position = Vector3(float(p0[1]), -float(p0[2]), -z0)
+
+	var s0: Array = L["tracks"]["scale"][0]
+	node3.scale = Vector3(float(s0[1]), float(s0[2]), 1.0)
+
+	var rx0 := 0.0
+	var ry0 := 0.0
+	var r3: Array = L["tracks"].get("rot3d", [])
+	if not r3.is_empty():
+		rx0 = float(r3[0][1])
+		ry0 = float(r3[0][2])
+	var rz0 := 0.0
+	var r2: Array = L["tracks"]["rotation"]
+	if not r2.is_empty():
+		rz0 = float(r2[0][1])
+	node3.rotation = Vector3(deg_to_rad(-rx0), deg_to_rad(-ry0), deg_to_rad(-rz0))
 
 	if n is Sprite3D:
 		var a0: Array = L["tracks"]["alpha"][0]
@@ -602,6 +623,7 @@ func _make_camera3(data: Dictionary) -> void:
 	if zoom > 0.0:
 		cam.fov = rad_to_deg(2.0 * atan((_comp_size.y * 0.5) / zoom))
 		cam.keep_aspect = Camera3D.KEEP_HEIGHT
+	cam.current = true
 	_root.add_child(cam)
 	cam.look_at_from_position(cam.position, Vector3(
 		float(ip[0]) - _comp_size.x * 0.5,
@@ -653,6 +675,12 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 			if not (has_pos or has_rot or has_scl):
 				continue
 
+			# 关键帧时间网格取这一层最密的通道，不能跟着 position 走
+			var grid: Array = kp
+			for cand in [kz, k3, kr, ks]:
+				if (cand as Array).size() > grid.size():
+					grid = cand
+
 			var t_pos := -1
 			if has_pos:
 				t_pos = anim.add_track(Animation.TYPE_VALUE)
@@ -672,20 +700,23 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 				anim.track_set_interpolation_type(t_scl, Animation.INTERPOLATION_LINEAR)
 				tracks += 1
 
-			for row in kp:
+			for row in grid:
 				var ms := float(row[0])
-				var x := float(row[1])
-				var y := float(row[2])
+				var pr := _row_at(kp, ms)
+				var x := float(pr[1]) if not pr.is_empty() else 0.0
+				var y := float(pr[2]) if not pr.is_empty() else 0.0
 				var z := 0.0
 				var zr := _row_at(kz, ms)
 				if not zr.is_empty():
 					z = float(zr[1])
 
 				if t_pos >= 0:
-					anim.track_insert_key(t_pos, ms / 1000.0, Vector3(
-						x - _comp_size.x * 0.5,
-						-(y - _comp_size.y * 0.5),
-						-z))
+					var v3: Vector3
+					if bool(L.get("parent") == null or int(L.get("parent", 0)) <= 0):
+						v3 = Vector3(x - _comp_size.x * 0.5, -(y - _comp_size.y * 0.5), -z)
+					else:
+						v3 = Vector3(x, -y, -z)
+					anim.track_insert_key(t_pos, ms / 1000.0, v3)
 					keys += 1
 
 				if t_rot >= 0:
