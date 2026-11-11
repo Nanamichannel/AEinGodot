@@ -25,6 +25,7 @@ const int LINEAR_LIGHT = 12;
 const int PIN_LIGHT = 13;
 const int HARD_MIX = 14;
 const int DIVIDE = 15;
+const int LINEAR_BURN = 16;
 
 float blend_ch(float a, float b, int m) {
 	if (m == SCREEN) {
@@ -69,6 +70,8 @@ float blend_ch(float a, float b, int m) {
 		return (a + b >= 1.0) ? 1.0 : 0.0;
 	} else if (m == DIVIDE) {
 		return b <= 0.0 ? 1.0 : min(1.0, a / b);
+	} else if (m == LINEAR_BURN) {
+		return clamp(a + b - 1.0, 0.0, 1.0);
 	}
 	return b;
 }

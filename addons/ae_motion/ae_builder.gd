@@ -1266,7 +1266,7 @@ func _blend_mode_for(mode: String) -> int:
 	match mode.to_upper():
 		"ADD", "LINEAR_DODGE", "LINEAR_LIGHT", "COLOR_DODGE":
 			return CanvasItemMaterial.BLEND_MODE_ADD
-		"MULTIPLY", "COLOR_BURN":
+		"MULTIPLY", "COLOR_BURN", "CLASSIC_COLOR_BURN":
 			return CanvasItemMaterial.BLEND_MODE_MUL
 		"SUBTRACT", "DIFFERENCE":
 			return CanvasItemMaterial.BLEND_MODE_SUB
@@ -1278,10 +1278,10 @@ const BLEND_SHADER_PATH := "res://addons/ae_motion/blend_screen.gdshader"
 
 # 需要屏幕纹理的模式 → 着色器里的常量
 const BLEND_SHADER_MODES := {
-	"SCREEN": 1, "OVERLAY": 2, "SOFT_LIGHT": 3, "HARD_LIGHT": 4,
+	"SCREEN": 1, "CLASSIC_SCREEN": 1, "OVERLAY": 2, "SOFT_LIGHT": 3, "HARD_LIGHT": 4,
 	"COLOR_DODGE": 5, "COLOR_BURN": 6, "DIFFERENCE": 7, "EXCLUSION": 8,
-	"DARKEN": 9, "LIGHTEN": 10, "VIVID_LIGHT": 11, "LINEAR_LIGHT": 12,
-	"PIN_LIGHT": 13, "HARD_MIX": 14, "DIVIDE": 15,
+	"DARKEN": 9, "DARKER_COLOR": 9, "LIGHTEN": 10, "LIGHTER_COLOR": 10, "VIVID_LIGHT": 11, "LINEAR_LIGHT": 12,
+	"PIN_LIGHT": 13, "HARD_MIX": 14, "DIVIDE": 15, "LINEAR_BURN": 16,
 }
 
 
@@ -1329,7 +1329,7 @@ func _blend_mode_for3(mode: String) -> int:
 	match mode.to_upper():
 		"ADD", "LINEAR_DODGE", "LINEAR_LIGHT", "COLOR_DODGE":
 			return BaseMaterial3D.BLEND_MODE_ADD
-		"MULTIPLY", "COLOR_BURN":
+		"MULTIPLY", "COLOR_BURN", "CLASSIC_COLOR_BURN":
 			return BaseMaterial3D.BLEND_MODE_MUL
 		"SUBTRACT", "DIFFERENCE":
 			return BaseMaterial3D.BLEND_MODE_SUB
