@@ -28,7 +28,7 @@ var _comp_size := Vector2(1920, 1080)
 var _comp_space_layers := {}
 
 
-func build(json_path: String, art_dir: String, out_scene: String, frames_dir: String = "") -> Dictionary:
+func build(json_path: String, art_dir: String, out_scene: String, frames_dir: String = "", loop_start: float = -1.0, loop_end: float = -1.0) -> Dictionary:
 	_by_index.clear()
 	_nodes.clear()
 	_missing.clear()
@@ -63,6 +63,10 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 		return _fail("JSON 里没有 layers")
 
 	var clip: Dictionary = data["clip"]
+	if loop_start >= 0.0 and loop_end > loop_start:
+		_apply_loop(data, loop_start, loop_end)
+		clip = data["clip"]
+		_lines.append("循环区间：%.2fs – %.2fs（长度 %.2fs，末帧对齐首帧）" % [loop_start, loop_end, loop_end - loop_start])
 	_fps = float(clip.get("sampleFps", clip.get("fps", 60.0)))
 	var comp: Dictionary = clip.get("comp", {})
 	_comp_size = Vector2(float(comp.get("width", 1920)), float(comp.get("height", 1080)))
@@ -462,3 +466,46 @@ func _check_frames_size(sf: SpriteFrames, asset: Dictionary, layer_name: String)
 		_frames_size_mismatch.append("%s：序列帧 %dx%d，图层边界 %dx%d" % [
 			layer_name, int(ts.x), int(ts.y), int(w), int(h)
 		])
+
+
+func _apply_loop(data: Dictionary, s: float, e: float) -> void:
+	var dur := e - s
+	var end_ms := int(round(dur * 1000.0))
+	for L in data.get("layers", []):
+		var tracks: Dictionary = L.get("tracks", {})
+		for ch in ["position", "rotation", "scale", "alpha"]:
+			var arr: Array = tracks.get(ch, [])
+			if arr.is_empty():
+				continue
+
+			var out: Array = []
+			for row in arr:
+				var t := float(row[0]) / 1000.0
+				if t + 0.0001 >= s and t - 0.0001 <= e:
+					var nr: Array = row.duplicate()
+					nr[0] = int(round((t - s) * 1000.0))
+					out.append(nr)
+
+			if out.is_empty():
+				var only: Array = arr[0].duplicate()
+				only[0] = 0
+				out.append(only)
+
+			var first: Array = out[0]
+			first[0] = 0
+
+			var last: Array = out[out.size() - 1]
+			if int(last[0]) >= end_ms - 1:
+				# 区间正好有末帧：把它的值换成首帧的值
+				last[0] = end_ms
+				for i in range(1, last.size()):
+					last[i] = first[i]
+			else:
+				# 区间里没有末帧：补一个和首帧一样的
+				var extra: Array = first.duplicate()
+				extra[0] = end_ms
+				out.append(extra)
+
+			tracks[ch] = out
+
+	data["clip"]["length"] = dur

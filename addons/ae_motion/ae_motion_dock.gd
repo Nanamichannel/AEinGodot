@@ -7,6 +7,8 @@ extends VBoxContainer
 var _json_edit: LineEdit
 var _art_edit: LineEdit
 var _frames_edit: LineEdit
+var _loop_start: LineEdit
+var _loop_end: LineEdit
 var _out_edit: LineEdit
 var _log: TextEdit
 var _auto: CheckBox
@@ -30,6 +32,29 @@ func _build_ui() -> void:
 	_json_edit = _row("AE 导出的 json", _browse_json)
 	_art_edit = _row("素材目录（项目内）", _browse_art)
 	_frames_edit = _row("序列帧目录（可选）", _browse_frames)
+
+	var loop_box := VBoxContainer.new()
+	var loop_label := Label.new()
+	loop_label.text = "循环区间（秒，留空=不循环）"
+	loop_box.add_child(loop_label)
+	var loop_row := HBoxContainer.new()
+	_loop_start = LineEdit.new()
+	_loop_start.placeholder_text = "起"
+	_loop_start.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	loop_row.add_child(_loop_start)
+	var dash := Label.new()
+	dash.text = "–"
+	loop_row.add_child(dash)
+	_loop_end = LineEdit.new()
+	_loop_end.placeholder_text = "止"
+	_loop_end.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	loop_row.add_child(_loop_end)
+	var loop_btn := Button.new()
+	loop_btn.text = "用全长"
+	loop_btn.pressed.connect(_fill_full_length)
+	loop_row.add_child(loop_btn)
+	loop_box.add_child(loop_row)
+	add_child(loop_box)
 	_out_edit = _row("输出场景（项目内）", _browse_out)
 
 	var opts := HBoxContainer.new()
@@ -170,7 +195,12 @@ func _run() -> void:
 	EditorInterface.get_resource_filesystem().scan()
 	var b = load("res://addons/ae_motion/ae_builder.gd").new()
 	var fdir := _frames_edit.text.strip_edges()
-	var res: Dictionary = b.build(j, a, o, fdir)
+	var ls := -1.0
+	var le := -1.0
+	if _loop_start.text.strip_edges() != "" and _loop_end.text.strip_edges() != "":
+		ls = float(_loop_start.text.strip_edges())
+		le = float(_loop_end.text.strip_edges())
+	var res: Dictionary = b.build(j, a, o, fdir, ls, le)
 	var text := ""
 	for line in res.get("lines", []):
 		text += String(line) + "\n"
@@ -188,3 +218,16 @@ func _safe(s: String) -> String:
 	for ch in [".", ":", "@", "/", "\\", "\"", "%"]:
 		out = out.replace(ch, "_")
 	return out
+
+func _fill_full_length() -> void:
+	var j := _json_edit.text.strip_edges()
+	if j == "" or not FileAccess.file_exists(j):
+		return
+	var f := FileAccess.open(j, FileAccess.READ)
+	var data = JSON.parse_string(f.get_as_text())
+	f.close()
+	if typeof(data) != TYPE_DICTIONARY:
+		return
+	var length := float(data["clip"].get("length", 0.0))
+	_loop_start.text = "0"
+	_loop_end.text = str(length)
