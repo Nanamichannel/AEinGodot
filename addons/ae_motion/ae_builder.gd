@@ -323,7 +323,8 @@ func _texture_for(L: Dictionary) -> Texture2D:
 			f = dir.get_next()
 		dir.list_dir_end()
 
-	_missing.append(_base_name(String(L["name"])))
+	if bool(L.get("enabled", true)):
+		_missing.append(_base_name(String(L["name"])))
 	return null
 
 
@@ -339,6 +340,8 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 	var first_name := ""
 
 	for L in _layer_list:
+		if not bool(L.get("enabled", true)):
+			continue
 		if not bool(L.get("isStatic", true)):
 			animated += 1
 
@@ -359,6 +362,8 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 			first_name = seg_name
 
 		for L in _layer_list:
+			if not bool(L.get("enabled", true)):
+				continue
 			if bool(L.get("isStatic", true)):
 				continue
 			if not bool(L.get("threeD", false)):
@@ -698,19 +703,27 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 	var first_name := ""
 
 	for L in _layer_list:
+		if not bool(L.get("enabled", true)):
+			continue
 		if not bool(L.get("isStatic", true)):
 			animated += 1
 
 	for seg in segments:
 		var s := float(seg["start"])
 		var e := float(seg["end"])
+		var reps := int(seg.get("repeat", 0))
+		var copies := reps if reps > 1 else 1
 		var anim := Animation.new()
-		anim.length = maxf(e - s, 0.001)
+		anim.length = maxf(e - s, 0.001) * copies
+		if bool(seg["loop"]) and copies == 1:
+			anim.loop_mode = Animation.LOOP_LINEAR
 		var seg_name := String(seg["name"])
 		if first_name == "":
 			first_name = seg_name
 
 		for L in _layer_list:
+			if not bool(L.get("enabled", true)):
+				continue
 			if bool(L.get("isStatic", true)):
 				continue
 			if not bool(L.get("threeD", false)):
