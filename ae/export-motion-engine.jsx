@@ -56,6 +56,18 @@
     // 2. Small helpers
     // ------------------------------------------------------------------
 
+    function layerNameList(list) {
+        var names = [];
+        for (var i = 0; i < list.length; i++) {
+            var nm = list[i].name;
+            var flag = "";
+            try { if (list[i].enabled === false) flag = "  [hidden]"; } catch (e) {}
+            names.push((i + 1) + ". " + nm + flag);
+            if (i >= 13) { names.push("... total " + list.length); break; }
+        }
+        return names.join("\n");
+    }
+
     function r4(n) {
         if (typeof n !== "number" || isNaN(n) || !isFinite(n)) return 0;
         return Math.round(n * 10000) / 10000;
@@ -714,11 +726,13 @@
     alert(
         "export-motion-engine\n\n" +
         "Written as ae-motion/1 JSON:\n" + outFile.fsName + "\n\n" +
-        "Composition: " + comp.name + "\n" +
+        "Composition: " + comp.name + "   (comp id " + comp.id + ")\n" +
+        "Layer count: " + layers.length + "\n" +
         "Size: " + comp.width + " x " + comp.height + " @ " + comp.frameRate + " fps\n" +
         "Length: " + r4(duration) + " s\n" +
         "Sample rate: " + fps + " fps\n" +
         "Layers: " + layers.length + " (" + staticCount + " static)\n" +
+        "Layer names:\n" + layerNameList(layers) + "\n" +
         "Unsupported features flagged: " + unsupported.length
     );
 
