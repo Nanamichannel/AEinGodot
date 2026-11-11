@@ -13,6 +13,8 @@ extends Node
 @export var sequence: PackedStringArray = PackedStringArray()
 ## 最后一段播完后是否停在末帧（true）还是回到开头（false）
 @export var hold_last_frame := true
+## 进入场景就自动播第一段（生成独立场景时为 true；合并进别的场景时导入器会关掉）
+@export var autoplay := true
 
 var _ap: AnimationPlayer
 
@@ -25,7 +27,14 @@ func _ready() -> void:
 		return
 
 	_ap.animation_finished.connect(_on_finished)
-	_ap.play(sequence[0])
+	if autoplay:
+		start()
+
+
+## 由外部调用开始播放（autoplay 关掉时用）
+func start() -> void:
+	if _ap != null and not sequence.is_empty():
+		_ap.play(sequence[0])
 
 
 func _on_finished(anim_name: String) -> void:

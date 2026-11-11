@@ -17,6 +17,7 @@ var _root: Node
 var _root2d: Node2D
 var _root2d_back: Node2D
 var _parented2d := {}
+var _merge_mode := false
 var _world: Node3D
 var _cam_node: Camera3D
 var _use3d := false
@@ -77,6 +78,7 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	if _layer_list.is_empty():
 		return _fail("JSON 里没有 layers")
 
+	_merge_mode = (merge_target != null)
 	var clip: Dictionary = data["clip"]
 	_fps = float(clip.get("sampleFps", clip.get("fps", 60.0)))
 	var segments := _parse_segments(segments_spec, float(clip.get("length", 0.0)))
@@ -263,14 +265,14 @@ func _node_for(idx: int) -> Node:
 		if scol2 != null:
 			sp.texture = _white_texture()
 			sp.self_modulate = scol2
-			sp.offset = Vector2(-float(anchor[0]) / maxf(wj, 1.0), -float(anchor[1]) / maxf(hj, 1.0))
+			sp.offset = Vector2.ZERO
 			sp.scale = Vector2(maxf(wj, 1.0), maxf(hj, 1.0))
 		else:
 			sp.texture = _texture_for(L)
 			var tex_size := Vector2(wj, hj)
 			if sp.texture != null:
 				tex_size = sp.texture.get_size()
-			sp.offset = -(Vector2(float(anchor[0]), float(anchor[1])) - (Vector2(wj, hj) - tex_size))
+			sp.offset = Vector2(wj, hj) - tex_size
 		n = sp
 
 	# AE 的层序是全局的：必须关掉相对父级累加，否则子层会被父级的 z 拖到底下
@@ -579,9 +581,10 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 				var tp := anim.add_track(Animation.TYPE_VALUE)
 				anim.track_set_path(tp, NodePath(rel2 + ":position"))
 				anim.track_set_interpolation_type(tp, Animation.INTERPOLATION_LINEAR)
+				var anc2: Array = L["asset"]["anchor"]
 				for row in kp2:
 					anim.track_insert_key(tp, float(row[0]) / 1000.0,
-						Vector2(float(row[1]), float(row[2])) + off)
+						Vector2(float(row[1]) - float(anc2[0]), float(row[2]) - float(anc2[1])) + off)
 					keys += 1
 				tracks += 1
 
@@ -689,9 +692,11 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 			names.append(String(seg2["name"]))
 		seq.set("player_path", NodePath("../AnimationPlayer"))
 		seq.set("sequence", names)
+		if _merge_mode:
+			seq.set("autoplay", false)
 		_root.add_child(seq)
 		ap.autoplay = ""
-	elif first_name != "":
+	elif first_name != "" and not _merge_mode:
 		ap.autoplay = first_name
 
 	return [animated, tracks, keys]
@@ -1042,9 +1047,10 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 				var tp := anim.add_track(Animation.TYPE_VALUE)
 				anim.track_set_path(tp, NodePath(rel2 + ":position"))
 				anim.track_set_interpolation_type(tp, Animation.INTERPOLATION_LINEAR)
+				var anc2: Array = L["asset"]["anchor"]
 				for row in kp2:
 					anim.track_insert_key(tp, float(row[0]) / 1000.0,
-						Vector2(float(row[1]), float(row[2])) + off)
+						Vector2(float(row[1]) - float(anc2[0]), float(row[2]) - float(anc2[1])) + off)
 					keys += 1
 				tracks += 1
 
@@ -1152,9 +1158,11 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 			names.append(String(seg2["name"]))
 		seq.set("player_path", NodePath("../AnimationPlayer"))
 		seq.set("sequence", names)
+		if _merge_mode:
+			seq.set("autoplay", false)
 		_root.add_child(seq)
 		ap.autoplay = ""
-	elif first_name != "":
+	elif first_name != "" and not _merge_mode:
 		ap.autoplay = first_name
 
 	return [animated, tracks, keys]
@@ -1360,14 +1368,14 @@ func _node_for2d(idx: int) -> Node:
 	if sc2 != null:
 		sp.texture = _white_texture()
 		sp.self_modulate = sc2
-		sp.offset = Vector2(-float(a[0]) / maxf(wj, 1.0), -float(a[1]) / maxf(hj, 1.0))
+		sp.offset = Vector2.ZERO
 		sp.scale = Vector2(maxf(wj, 1.0), maxf(hj, 1.0))
 	else:
 		sp.texture = _texture_for(L)
 		var ts := Vector2(wj, hj)
 		if sp.texture != null:
 			ts = sp.texture.get_size()
-		sp.offset = -(Vector2(float(a[0]), float(a[1])) - (Vector2(wj, hj) - ts))
+		sp.offset = Vector2(wj, hj) - ts
 
 	# 父级也是 2D 层时，保留层级（父级动，子层跟着动）；否则按合成坐标摆放
 	var p0: Array = L["tracks"]["position"][0]
@@ -1379,9 +1387,9 @@ func _node_for2d(idx: int) -> Node:
 		if pn != null and pn is CanvasItem and not (pn is Node3D):
 			parent2d = pn
 	if parent2d != null:
-		sp.position = Vector2(float(p0[1]), float(p0[2]))
+		sp.position = Vector2(float(p0[1]) - float(a[0]), float(p0[2]) - float(a[1]))
 	else:
-		sp.position = Vector2(float(p0[1]), float(p0[2])) + _ancestor_offset(L)
+		sp.position = Vector2(float(p0[1]) - float(a[0]), float(p0[2]) - float(a[1])) + _ancestor_offset(L)
 	sp.z_index = 100 - int(L["z"])
 
 	var s0: Array = L["tracks"]["scale"][0]
