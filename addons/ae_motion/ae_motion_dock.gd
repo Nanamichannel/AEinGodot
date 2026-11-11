@@ -8,6 +8,8 @@ var _json_edit: LineEdit
 var _art_edit: LineEdit
 var _frames_edit: LineEdit
 var _segments: LineEdit
+var _merge_check: CheckBox
+var _merge_parent: LineEdit
 var _out_edit: LineEdit
 var _log: TextEdit
 var _auto: CheckBox
@@ -52,6 +54,15 @@ func _build_ui() -> void:
 	_open_after.button_pressed = true
 	opts.add_child(_open_after)
 	add_child(opts)
+
+	var merge_box := VBoxContainer.new()
+	_merge_check = CheckBox.new()
+	_merge_check.text = "合并进当前打开的场景（不新建文件）"
+	merge_box.add_child(_merge_check)
+	_merge_parent = LineEdit.new()
+	_merge_parent.placeholder_text = "父节点路径，留空=挂到场景根"
+	merge_box.add_child(_merge_parent)
+	add_child(merge_box)
 
 	var run := Button.new()
 	run.text = "生成场景"
@@ -181,14 +192,32 @@ func _run() -> void:
 	var b = load("res://addons/ae_motion/ae_builder.gd").new()
 	var fdir := _frames_edit.text.strip_edges()
 	var segs := _segments.text.strip_edges()
-	var res: Dictionary = b.build(j, a, o, fdir, segs)
+	var target: Node = null
+	if _merge_check.button_pressed:
+		var scene := EditorInterface.get_edited_scene_root()
+		if scene == null:
+			_log.text = "没有打开的场景，先把主场景打开再勾选合并。"
+			_busy = false
+			return
+		target = scene
+		var parent_path := _merge_parent.text.strip_edges()
+		if parent_path != "":
+			target = scene.get_node_or_null(NodePath(parent_path))
+			if target == null:
+				_log.text = "找不到父节点：" + parent_path
+				_busy = false
+				return
+
+	var res: Dictionary = b.build(j, a, o, fdir, segs, target)
+	if target != null and res.get("ok", false):
+		EditorInterface.mark_scene_as_unsaved()
 	var text := ""
 	for line in res.get("lines", []):
 		text += String(line) + "\n"
 	_log.text = text
 	_busy = false
 
-	if res.get("ok", false):
+	if res.get("ok", false) and target == null:
 		EditorInterface.get_resource_filesystem().scan()
 		if _open_after.button_pressed:
 			EditorInterface.open_scene_from_path(o)

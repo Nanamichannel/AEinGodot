@@ -29,7 +29,7 @@ var _comp_size := Vector2(1920, 1080)
 var _comp_space_layers := {}
 
 
-func build(json_path: String, art_dir: String, out_scene: String, frames_dir: String = "", segments_spec: String = "") -> Dictionary:
+func build(json_path: String, art_dir: String, out_scene: String, frames_dir: String = "", segments_spec: String = "", merge_target: Node = null) -> Dictionary:
 	_by_index.clear()
 	_nodes.clear()
 	_missing.clear()
@@ -84,7 +84,17 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 		_node_for(int(L["index"]))
 
 	var stats := _build_animation(data, segments)
-	var err := _save()
+	var err := OK
+	if merge_target != null:
+		_root.name = _unique_name(merge_target, _root.name, _root)
+		merge_target.add_child(_root)
+		var scene_root: Node = merge_target
+		while scene_root.owner != null:
+			scene_root = scene_root.owner
+		_root.owner = scene_root
+		_set_owner(_root, scene_root)
+	else:
+		err = _save()
 
 	_lines.append("========== 完成 ==========")
 	_lines.append("合成：%s  %sx%s  %.2fs" % [
@@ -96,7 +106,10 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	_lines.append("图层 %d 个｜动画层 %d 个｜轨道 %d 条｜关键帧 %d 个" % [
 		_layer_list.size(), stats[0], stats[1], stats[2]
 	])
-	_lines.append("输出：" + _out_scene)
+	if merge_target != null:
+		_lines.append("已合并进当前场景：" + String(merge_target.get_path()))
+	else:
+		_lines.append("输出：" + _out_scene)
 
 	if not _blend_skipped.is_empty():
 		_lines.append("⚠ 混合模式未实现 %d 层：%s（现在是普通叠加）" % [
