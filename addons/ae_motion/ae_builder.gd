@@ -14,6 +14,7 @@ var _by_index := {}
 var _nodes := {}
 var _layer_list := []
 var _root: Node
+var _root2d: Node2D
 var _use3d := false
 var _missing := []
 var _missing_frames := []
@@ -79,6 +80,12 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	_use3d = bool(clip.get("hasCamera", false))
 	if _use3d:
 		_root = Node3D.new()
+		var canvas := CanvasLayer.new()
+		canvas.name = "2D层"
+		_root.add_child(canvas)
+		_root2d = Node2D.new()
+		_root2d.name = "Sprites2D"
+		canvas.add_child(_root2d)
 	else:
 		_root = Node2D.new()
 	_root.name = _base_name(String(clip["name"]))
@@ -159,7 +166,9 @@ func _fail(msg: String) -> Dictionary:
 
 func _node_for(idx: int) -> Node:
 	if _use3d:
-		return _node_for3(idx)
+		if bool(_by_index[idx].get("threeD", false)):
+			return _node_for3(idx)
+		return _node_for2d(idx)
 	if _nodes.has(idx):
 		return _nodes[idx]
 
@@ -352,6 +361,8 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 		for L in _layer_list:
 			if bool(L.get("isStatic", true)):
 				continue
+			if not bool(L.get("threeD", false)):
+				continue
 			var n = _nodes.get(int(L["index"]))
 			if n == null:
 				continue
@@ -434,6 +445,48 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 				anim.track_set_interpolation_type(t4, Animation.INTERPOLATION_LINEAR)
 				for row in ka:
 					anim.track_insert_key(t4, float(row[0]) / 1000.0, float(row[1]))
+					keys += 1
+				tracks += 1
+
+		# 2D 层：屏幕空间坐标 = 自身 + 父级链位置
+		for L in _layer_list:
+			if bool(L.get("threeD", false)) or bool(L.get("isStatic", true)):
+				continue
+			var n2 = _nodes.get(int(L["index"]))
+			if n2 == null or not (n2 is Sprite2D):
+				continue
+			var rel2 := String(_root.get_path_to(n2))
+			var off := _ancestor_offset(L)
+			var t2k: Dictionary = L["tracks"]
+
+			var kp2 := _slice(t2k["position"], s, e, false)
+			if _varies(kp2, 3):
+				var tp := anim.add_track(Animation.TYPE_VALUE)
+				anim.track_set_path(tp, NodePath(rel2 + ":position"))
+				anim.track_set_interpolation_type(tp, Animation.INTERPOLATION_LINEAR)
+				for row in kp2:
+					anim.track_insert_key(tp, float(row[0]) / 1000.0,
+						Vector2(float(row[1]), float(row[2])) + off)
+					keys += 1
+				tracks += 1
+
+			var kr2 := _slice(t2k["rotation"], s, e, false)
+			if _varies(kr2, 2):
+				var tr := anim.add_track(Animation.TYPE_VALUE)
+				anim.track_set_path(tr, NodePath(rel2 + ":rotation"))
+				anim.track_set_interpolation_type(tr, Animation.INTERPOLATION_LINEAR)
+				for row in kr2:
+					anim.track_insert_key(tr, float(row[0]) / 1000.0, deg_to_rad(float(row[1])))
+					keys += 1
+				tracks += 1
+
+			var ka2 := _slice(t2k["alpha"], s, e, false)
+			if _varies(ka2, 2):
+				var ta := anim.add_track(Animation.TYPE_VALUE)
+				anim.track_set_path(ta, NodePath(rel2 + ":self_modulate:a"))
+				anim.track_set_interpolation_type(ta, Animation.INTERPOLATION_LINEAR)
+				for row in ka2:
+					anim.track_insert_key(ta, float(row[0]) / 1000.0, float(row[1]))
 					keys += 1
 				tracks += 1
 
@@ -660,6 +713,8 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 		for L in _layer_list:
 			if bool(L.get("isStatic", true)):
 				continue
+			if not bool(L.get("threeD", false)):
+				continue
 			var n = _nodes.get(int(L["index"]))
 			if n == null:
 				continue
@@ -742,6 +797,48 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 						anim.track_insert_key(t_scl, ms / 1000.0, Vector3(
 							float(sr[1]), float(sr[2]), 1.0))
 						keys += 1
+
+		# 2D 层：屏幕空间坐标 = 自身 + 父级链位置
+		for L in _layer_list:
+			if bool(L.get("threeD", false)) or bool(L.get("isStatic", true)):
+				continue
+			var n2 = _nodes.get(int(L["index"]))
+			if n2 == null or not (n2 is Sprite2D):
+				continue
+			var rel2 := String(_root.get_path_to(n2))
+			var off := _ancestor_offset(L)
+			var t2k: Dictionary = L["tracks"]
+
+			var kp2 := _slice(t2k["position"], s, e, false)
+			if _varies(kp2, 3):
+				var tp := anim.add_track(Animation.TYPE_VALUE)
+				anim.track_set_path(tp, NodePath(rel2 + ":position"))
+				anim.track_set_interpolation_type(tp, Animation.INTERPOLATION_LINEAR)
+				for row in kp2:
+					anim.track_insert_key(tp, float(row[0]) / 1000.0,
+						Vector2(float(row[1]), float(row[2])) + off)
+					keys += 1
+				tracks += 1
+
+			var kr2 := _slice(t2k["rotation"], s, e, false)
+			if _varies(kr2, 2):
+				var tr := anim.add_track(Animation.TYPE_VALUE)
+				anim.track_set_path(tr, NodePath(rel2 + ":rotation"))
+				anim.track_set_interpolation_type(tr, Animation.INTERPOLATION_LINEAR)
+				for row in kr2:
+					anim.track_insert_key(tr, float(row[0]) / 1000.0, deg_to_rad(float(row[1])))
+					keys += 1
+				tracks += 1
+
+			var ka2 := _slice(t2k["alpha"], s, e, false)
+			if _varies(ka2, 2):
+				var ta := anim.add_track(Animation.TYPE_VALUE)
+				anim.track_set_path(ta, NodePath(rel2 + ":self_modulate:a"))
+				anim.track_set_interpolation_type(ta, Animation.INTERPOLATION_LINEAR)
+				for row in ka2:
+					anim.track_insert_key(ta, float(row[0]) / 1000.0, float(row[1]))
+					keys += 1
+				tracks += 1
 
 		lib.add_animation(seg_name, anim)
 
@@ -925,3 +1022,58 @@ func _row_at(rows: Array, ms: float) -> Array:
 			bd = d
 			best = row
 	return best
+
+func _ancestor_offset(L: Dictionary) -> Vector2:
+	var off := Vector2.ZERO
+	var pid = L.get("parent")
+	var guard := 0
+	while pid != null and int(pid) > 0 and guard < 32:
+		var P: Dictionary = _by_index[int(pid)]
+		var pp: Array = P["tracks"]["position"][0]
+		off += Vector2(float(pp[1]), float(pp[2]))
+		pid = P.get("parent")
+		guard += 1
+	return off
+
+
+func _node_for2d(idx: int) -> Node:
+	if _nodes.has(idx):
+		return _nodes[idx]
+
+	var L: Dictionary = _by_index[idx]
+	var t2 := String(L.get("type", "image"))
+	if t2 == "camera" or t2 == "light":
+		var stub := Node2D.new()
+		stub.name = _base_name(String(L["name"]))
+		_nodes[idx] = stub
+		_root2d.add_child(stub)
+		return stub
+
+	var sp := Sprite2D.new()
+	sp.texture = _texture_for(L)
+	sp.centered = false
+
+	var a: Array = L["asset"]["anchor"]
+	var wj := float(L["asset"]["width"])
+	var hj := float(L["asset"]["height"])
+	var ts := Vector2(wj, hj)
+	if sp.texture != null:
+		ts = sp.texture.get_size()
+	sp.offset = -(Vector2(float(a[0]), float(a[1])) - (Vector2(wj, hj) - ts))
+
+	var p0: Array = L["tracks"]["position"][0]
+	sp.position = Vector2(float(p0[1]), float(p0[2])) + _ancestor_offset(L)
+	sp.z_index = 100 - int(L["z"])
+
+	var s0: Array = L["tracks"]["scale"][0]
+	sp.scale = Vector2(float(s0[1]), float(s0[2]))
+	var r0: Array = L["tracks"]["rotation"][0]
+	sp.rotation = deg_to_rad(float(r0[1]))
+	var al: Array = L["tracks"]["alpha"][0]
+	sp.self_modulate = Color(1.0, 1.0, 1.0, float(al[1]))
+
+	sp.name = _base_name(String(L["name"]))
+	_nodes[idx] = sp
+	_root2d.add_child(sp)
+	sp.name = _unique_name(_root2d, String(sp.name), sp)
+	return sp
