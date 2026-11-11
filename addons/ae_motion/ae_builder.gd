@@ -773,6 +773,7 @@ func _make_camera3(data: Dictionary) -> void:
 		cam.keep_aspect = Camera3D.KEEP_HEIGHT
 	cam.current = true
 	_world.add_child(cam)
+	cam.make_current()
 	cam.look_at_from_position(cam.position, Vector3(
 		float(ip[0]) - _comp_size.x * 0.5,
 		-(float(ip[1]) - _comp_size.y * 0.5),
@@ -1177,7 +1178,7 @@ func _node_for2d(idx: int) -> Node:
 	var sp := Sprite2D.new()
 	sp.centered = false
 	var host: Node2D = _root2d
-	if int(L["z"]) < int(_mid_3d_z):
+	if int(L["z"]) > int(_mid_3d_z):
 		host = _root2d_back
 
 	var a: Array = L["asset"]["anchor"]
@@ -1206,7 +1207,8 @@ func _node_for2d(idx: int) -> Node:
 	var r0: Array = L["tracks"]["rotation"][0]
 	sp.rotation = deg_to_rad(float(r0[1]))
 	var al: Array = L["tracks"]["alpha"][0]
-	sp.self_modulate = Color(1.0, 1.0, 1.0, float(al[1]))
+	var basec := Color(1.0, 1.0, 1.0) if sc2 == null else (sc2 as Color)
+	sp.self_modulate = Color(basec.r, basec.g, basec.b, float(al[1]))
 
 	sp.name = _base_name(String(L["name"]))
 	_nodes[idx] = sp
@@ -1215,6 +1217,9 @@ func _node_for2d(idx: int) -> Node:
 	return sp
 
 func _solid_color(L: Dictionary) -> Variant:
+	# 只有 type=solid 的图层才是"色块"；null 也可能是纯色源，但它是空物体
+	if String(L.get("type", "")) != "solid":
+		return null
 	var a: Dictionary = L.get("asset", {})
 	if a.has("color"):
 		var c: Array = a["color"]
