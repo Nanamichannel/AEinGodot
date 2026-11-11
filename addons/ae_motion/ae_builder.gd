@@ -13,7 +13,8 @@ extends RefCounted
 var _by_index := {}
 var _nodes := {}
 var _layer_list := []
-var _root: Node2D
+var _root: Node
+var _use3d := false
 var _missing := []
 var _missing_frames := []
 var _blend_skipped := []
@@ -75,7 +76,11 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	_comp_size = Vector2(float(comp.get("width", 1920)), float(comp.get("height", 1080)))
 	_comp_space_layers.clear()
 
-	_root = Node2D.new()
+	_use3d = bool(clip.get("hasCamera", false))
+	if _use3d:
+		_root = Node3D.new()
+	else:
+		_root = Node2D.new()
 	_root.name = _base_name(String(clip["name"]))
 
 	var sorted: Array = _layer_list.duplicate()
@@ -83,7 +88,12 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	for L in sorted:
 		_node_for(int(L["index"]))
 
-	var stats := _build_animation(data, segments)
+	var stats: Array
+	if _use3d:
+		_make_camera3(data)
+		stats = _build_animation_3d(data, segments)
+	else:
+		stats = _build_animation(data, segments)
 	var err := OK
 	if merge_target != null:
 		_root.name = _unique_name(merge_target, _root.name, _root)
@@ -147,7 +157,9 @@ func _fail(msg: String) -> Dictionary:
 	return {"ok": false, "lines": _lines, "scene": "", "missing": _missing}
 
 
-func _node_for(idx: int) -> Node2D:
+func _node_for(idx: int) -> Node:
+	if _use3d:
+		return _node_for3(idx)
 	if _nodes.has(idx):
 		return _nodes[idx]
 
@@ -450,6 +462,8 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 
 func _slice(track: Array, s: float, e: float, loop: bool) -> Array:
 	var out: Array = []
+	if track.is_empty():
+		return out
 	var end_ms := int(round((e - s) * 1000.0))
 	for row in track:
 		var t := float(row[0]) / 1000.0
@@ -516,6 +530,207 @@ func _parse_segments(spec: String, total: float) -> Array:
 	if segs.is_empty():
 		segs.append({"name": "play", "start": 0.0, "end": total, "loop": false})
 	return segs
+
+func _node_for3(idx: int) -> Node:
+	if _nodes.has(idx):
+		return _nodes[idx]
+
+	var L: Dictionary = _by_index[idx]
+	var anchor: Array = L["asset"]["anchor"]
+	var n: Node
+
+	var t3 := String(L.get("type", "image"))
+	if t3 == "null" or t3 == "camera" or t3 == "light":
+		n = Node3D.new()
+	else:
+		var sp := Sprite3D.new()
+		sp.texture = _texture_for(L)
+		sp.pixel_size = 1.0
+		sp.centered = false
+		sp.offset = Vector2(-float(anchor[0]), float(anchor[1]))
+		sp.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		n = sp
+
+	var p0: Array = L["tracks"]["position"][0]
+	var z0 := 0.0
+	var pz: Array = L["tracks"].get("posZ", [])
+	if not pz.is_empty():
+		z0 = float(pz[0][1])
+
+	var node3 := n as Node3D
+	node3.position = Vector3(
+		float(p0[1]) - _comp_size.x * 0.5,
+		-(float(p0[2]) - _comp_size.y * 0.5),
+		-z0)
+
+	if n is Sprite3D:
+		var a0: Array = L["tracks"]["alpha"][0]
+		(n as Sprite3D).modulate = Color(1.0, 1.0, 1.0, float(a0[1]))
+
+	n.name = _base_name(String(L["name"]))
+	_nodes[idx] = n
+
+	var pid = L.get("parent")
+	if pid != null and int(pid) > 0:
+		var p := _node_for3(int(pid))
+		p.add_child(n)
+		n.name = _unique_name(p, String(n.name), n)
+	else:
+		_root.add_child(n)
+		n.name = _unique_name(_root, String(n.name), n)
+
+	return n
+
+
+func _make_camera3(data: Dictionary) -> void:
+	var cam_data: Dictionary = {}
+	for L in _layer_list:
+		if String(L.get("type", "")) == "camera" and L.has("camera"):
+			cam_data = L["camera"]
+			break
+	var cam := Camera3D.new()
+	cam.name = "Camera3D"
+	var zoom := float(cam_data.get("zoom", 0.0))
+	var cp: Array = cam_data.get("position", [0, 0, 0])
+	var ip: Array = cam_data.get("interest", [0, 0])
+
+	cam.position = Vector3(
+		float(cp[0]) - _comp_size.x * 0.5,
+		-(float(cp[1]) - _comp_size.y * 0.5),
+		-float(cp[2]))
+
+	if zoom > 0.0:
+		cam.fov = rad_to_deg(2.0 * atan((_comp_size.y * 0.5) / zoom))
+		cam.keep_aspect = Camera3D.KEEP_HEIGHT
+	_root.add_child(cam)
+	cam.look_at_from_position(cam.position, Vector3(
+		float(ip[0]) - _comp_size.x * 0.5,
+		-(float(ip[1]) - _comp_size.y * 0.5),
+		0.0), Vector3.UP)
+
+
+func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
+	var ap := AnimationPlayer.new()
+	ap.name = "AnimationPlayer"
+	_root.add_child(ap)
+
+	var lib := AnimationLibrary.new()
+	var animated := 0
+	var tracks := 0
+	var keys := 0
+	var first_name := ""
+
+	for L in _layer_list:
+		if not bool(L.get("isStatic", true)):
+			animated += 1
+
+	for seg in segments:
+		var s := float(seg["start"])
+		var e := float(seg["end"])
+		var anim := Animation.new()
+		anim.length = maxf(e - s, 0.001)
+		var seg_name := String(seg["name"])
+		if first_name == "":
+			first_name = seg_name
+
+		for L in _layer_list:
+			if bool(L.get("isStatic", true)):
+				continue
+			var n = _nodes.get(int(L["index"]))
+			if n == null:
+				continue
+			var rel := String(_root.get_path_to(n))
+			var tk: Dictionary = L["tracks"]
+			var kp := _slice(tk["position"], s, e, false)
+			var kz := _slice(tk.get("posZ", []), s, e, false)
+			var kr := _slice(tk["rotation"], s, e, false)
+			var k3 := _slice(tk.get("rot3d", []), s, e, false)
+			var ks := _slice(tk["scale"], s, e, false)
+
+			var has_pos := _varies(kp, 3) or _varies(kz, 2)
+			var has_rot := _varies(kr, 2) or _varies(k3, 3)
+			var has_scl := _varies(ks, 3)
+			if not (has_pos or has_rot or has_scl):
+				continue
+
+			var t_pos := -1
+			if has_pos:
+				t_pos = anim.add_track(Animation.TYPE_VALUE)
+				anim.track_set_path(t_pos, NodePath(rel + ":position"))
+				anim.track_set_interpolation_type(t_pos, Animation.INTERPOLATION_LINEAR)
+				tracks += 1
+			var t_rot := -1
+			if has_rot:
+				t_rot = anim.add_track(Animation.TYPE_VALUE)
+				anim.track_set_path(t_rot, NodePath(rel + ":rotation"))
+				anim.track_set_interpolation_type(t_rot, Animation.INTERPOLATION_LINEAR)
+				tracks += 1
+			var t_scl := -1
+			if has_scl:
+				t_scl = anim.add_track(Animation.TYPE_VALUE)
+				anim.track_set_path(t_scl, NodePath(rel + ":scale"))
+				anim.track_set_interpolation_type(t_scl, Animation.INTERPOLATION_LINEAR)
+				tracks += 1
+
+			for row in kp:
+				var ms := float(row[0])
+				var x := float(row[1])
+				var y := float(row[2])
+				var z := 0.0
+				var zr := _row_at(kz, ms)
+				if not zr.is_empty():
+					z = float(zr[1])
+
+				if t_pos >= 0:
+					anim.track_insert_key(t_pos, ms / 1000.0, Vector3(
+						x - _comp_size.x * 0.5,
+						-(y - _comp_size.y * 0.5),
+						-z))
+					keys += 1
+
+				if t_rot >= 0:
+					var rx := 0.0
+					var ry := 0.0
+					var r3r := _row_at(k3, ms)
+					if not r3r.is_empty():
+						rx = float(r3r[1])
+						ry = float(r3r[2])
+					var rz := 0.0
+					var rrr := _row_at(kr, ms)
+					if not rrr.is_empty():
+						rz = float(rrr[1])
+					anim.track_insert_key(t_rot, ms / 1000.0, Vector3(
+						deg_to_rad(-rx), deg_to_rad(-ry), deg_to_rad(-rz)))
+					keys += 1
+
+				if t_scl >= 0:
+					var sr := _row_at(ks, ms)
+					if not sr.is_empty():
+						anim.track_insert_key(t_scl, ms / 1000.0, Vector3(
+							float(sr[1]), float(sr[2]), 1.0))
+						keys += 1
+
+		lib.add_animation(seg_name, anim)
+
+	ap.add_animation_library("", lib)
+	ap.root_node = NodePath("..")
+
+	if segments.size() > 1:
+		var seq := Node.new()
+		seq.name = "AutoSequence"
+		seq.set_script(load("res://addons/ae_motion/auto_sequence.gd"))
+		var names := PackedStringArray()
+		for seg2 in segments:
+			names.append(String(seg2["name"]))
+		seq.set("player_path", NodePath("../AnimationPlayer"))
+		seq.set("sequence", names)
+		_root.add_child(seq)
+		ap.autoplay = ""
+	elif first_name != "":
+		ap.autoplay = first_name
+
+	return [animated, tracks, keys]
+
 
 func _save() -> int:
 	_set_owner(_root, _root)

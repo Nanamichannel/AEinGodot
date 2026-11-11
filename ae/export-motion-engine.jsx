@@ -291,6 +291,21 @@
         return info;
     }
 
+    function readCameraZoom(layer) {
+        var z = 0;
+        try {
+            var g = layer.property("ADBE Camera Options Group");
+            if (g) z = g.property("ADBE Camera Zoom").value;
+        } catch (e) { z = 0; }
+        if (!z || z <= 0) {
+            try {
+                var p = layer.property("ADBE Transform Group").property("ADBE Position").value;
+                z = -p[2];
+            } catch (e2) { z = 0; }
+        }
+        return z;
+    }
+
     function effectNames(layer) {
         var names = [];
         try {
@@ -331,7 +346,7 @@
             tr = null;
         }
 
-        var tracks = { position: [], rotation: [], scale: [], alpha: [], rot3d: [] };
+        var tracks = { position: [], rotation: [], scale: [], alpha: [], rot3d: [], posZ: [] };
         if (!tr) return tracks;
 
         // The anchor point can be animated (that is how an image "moves"
@@ -361,6 +376,8 @@
                 var RX = propValue(tr, "ADBE Rotate X", t);
                 var RY = propValue(tr, "ADBE Rotate Y", t);
                 tracks.rot3d.push([ms, r4(RX === null ? 0 : RX), r4(RY === null ? 0 : RY)]);
+                var PZ = propValue(tr, "ADBE Position", t);
+                tracks.posZ.push([ms, r4((PZ && PZ.length > 2) ? PZ[2] : 0)]);
             }
 
             var px = (P && P.length > 0) ? P[0] : 0;
@@ -432,6 +449,7 @@
     var layers = [];
     var unsupported = [];
     var groupId = 1;
+    var doc_has_camera = false;
     var prevRole = "normal";
 
     for (var li = 1; li <= comp.numLayers; li++) {
@@ -506,6 +524,20 @@
         }
         entry.frames = framesDir;
         entry.framesLoop = framesLoop;
+        // 相机层：导入端靠它还原透视
+        if (type === "camera") {
+            try {
+                var cp = layer.property("ADBE Transform Group").property("ADBE Position").value;
+                var poi = layer.property("ADBE Transform Group").property("ADBE Anchor Point").value;
+                entry.camera = {
+                    position: [r4(cp[0]), r4(cp[1]), r4(cp[2])],
+                    interest: [r4(poi[0]), r4(poi[1])],
+                    zoom: r4(readCameraZoom(layer))
+                };
+                doc_has_camera = true;
+            } catch (ec) {}
+        }
+
         // flags
         try {
             entry.threeD = (layer.threeDLayer === true);
@@ -544,7 +576,8 @@
         };
 
         var r3 = tracks.rot3d;
-        var isStatic = (isFlat(p0) && isFlat(r0) && isFlat(s0) && isFlat(a0) && isFlat(r3));
+        var pz = tracks.posZ;
+        var isStatic = (isFlat(p0) && isFlat(r0) && isFlat(s0) && isFlat(a0) && isFlat(r3) && isFlat(pz));
 
         if (!CONFIG.includeStatic && isStatic) continue;
 
@@ -554,7 +587,8 @@
                 rotation: compressStatic(r0),
                 scale: compressStatic(s0),
                 alpha: compressStatic(a0),
-                rot3d: compressStatic(r3)
+                rot3d: compressStatic(r3),
+                posZ: compressStatic(pz)
             };
             entry.isStatic = true;
         } else {
@@ -563,7 +597,8 @@
                 rotation: r0,
                 scale: s0,
                 alpha: a0,
-                rot3d: r3
+                rot3d: r3,
+                posZ: pz
             };
         }
         entry.firstLastDelta = seam;
@@ -610,7 +645,8 @@
             fps: comp.frameRate,
             sampleFps: fps,
             length: r4(duration),
-            comp: { width: comp.width, height: comp.height }
+            comp: { width: comp.width, height: comp.height },
+            hasCamera: doc_has_camera
         },
         units: {
             position: "px",
