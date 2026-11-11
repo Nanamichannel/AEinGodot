@@ -549,6 +549,8 @@ func _node_for3(idx: int) -> Node:
 		sp.centered = false
 		sp.offset = Vector2(-float(anchor[0]), -float(anchor[1]))
 		sp.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		# 同深度的透明精灵按这个排序：AE 里图层号越小越靠前
+		sp.render_priority = 100 - int(L["z"])
 		n = sp
 
 	var p0: Array = L["tracks"]["position"][0]
