@@ -412,7 +412,20 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 
 	ap.add_animation_library("", lib)
 	ap.root_node = NodePath("..")
-	if first_name != "":
+
+	if segments.size() > 1:
+		# 多段：自动挂一个串接节点，按段表顺序播，不用手写代码
+		var seq := Node.new()
+		seq.name = "AutoSequence"
+		seq.set_script(load("res://addons/ae_motion/auto_sequence.gd"))
+		var names := PackedStringArray()
+		for seg2 in segments:
+			names.append(String(seg2["name"]))
+		seq.set("player_path", NodePath("../AnimationPlayer"))
+		seq.set("sequence", names)
+		_root.add_child(seq)
+		ap.autoplay = ""
+	elif first_name != "":
 		ap.autoplay = first_name
 
 	return [animated, tracks, keys]
