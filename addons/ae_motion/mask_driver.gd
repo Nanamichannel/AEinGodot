@@ -17,9 +17,8 @@ extends Node
 ##
 
 @export var target_path: NodePath
-@export var frames: Array = []
-@export var layer_size := Vector2(1920.0, 1080.0)
-@export var layer_anchor := Vector2(0.0, 0.0)
+@export var frames: Array = []          # 合成坐标的点（来自 json 的 compFrames）
+@export var comp_size := Vector2(1920.0, 1080.0)
 @export var loop := false
 
 var _t := 0.0
@@ -71,5 +70,4 @@ func _apply(ms: float) -> void:
 		packed.append(Vector2(float(pts_arr[i][0]), float(pts_arr[i][1])))
 	mat.set_shader_parameter("points", packed)
 	mat.set_shader_parameter("count", packed.size())
-	mat.set_shader_parameter("layer_size", layer_size)
-	mat.set_shader_parameter("layer_anchor", layer_anchor)
+	mat.set_shader_parameter("comp_size", comp_size)

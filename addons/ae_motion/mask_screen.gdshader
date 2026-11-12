@@ -9,8 +9,7 @@ shader_type canvas_item;
 
 uniform int count = 0;
 uniform vec2 points[512];
-uniform vec2 layer_size = vec2(1.0, 1.0);
-uniform vec2 layer_anchor = vec2(0.0, 0.0);
+uniform vec2 comp_size = vec2(1920.0, 1080.0);
 uniform float feather = 0.0;
 
 bool inside_polygon(vec2 p) {
@@ -31,7 +30,7 @@ bool inside_polygon(vec2 p) {
 }
 
 void fragment() {
-	vec2 imgpos = UV * layer_size;
+	vec2 imgpos = UV * comp_size;
 	if (count >= 3 && !inside_polygon(imgpos)) {
 		discard;
 	}

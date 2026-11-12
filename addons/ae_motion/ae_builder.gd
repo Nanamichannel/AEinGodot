@@ -1580,12 +1580,12 @@ func _build_mask_drivers() -> void:
 	_root.add_child(holder)
 	for d in _mask_drivers:
 		var m: Dictionary = d["mask"]
-		var frames: Array = m.get("frames", [])
+		var frames: Array = m.get("compFrames", m.get("frames", []))
 		if frames.is_empty():
 			continue
 		var drv := Node.new()
 		drv.name = "Mask_" + String(d["layer"])
 		drv.set_script(load("res://addons/ae_motion/mask_driver.gd"))
 		drv.set("frames", frames)
-		drv.set("layer_size", _comp_size)
+		drv.set("comp_size", _comp_size)
 		holder.add_child(drv)

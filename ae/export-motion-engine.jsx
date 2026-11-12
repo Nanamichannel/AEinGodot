@@ -56,6 +56,29 @@
     // 2. Small helpers
     // ------------------------------------------------------------------
 
+    // 把蒙版点从图层坐标换算到合成坐标（消除它挂在哪个层上的影响）
+    function pointsToComp(layer, pts) {
+        try {
+            var tr = layer.property("ADBE Transform Group");
+            var P = tr.property("ADBE Position").value;
+            var A = tr.property("ADBE Anchor Point").value;
+            var S = tr.property("ADBE Scale").value;
+            var R = tr.property("ADBE Rotate Z").value;
+            var rad = R * Math.PI / 180;
+            var cos = Math.cos(rad), sin = Math.sin(rad);
+            var out = [];
+            for (var i = 0; i < pts.length; i++) {
+                var dx = (pts[i][0] - A[0]) * S[0] / 100;
+                var dy = (pts[i][1] - A[1]) * S[1] / 100;
+                out.push([
+                    Math.round((P[0] + dx * cos - dy * sin) * 10) / 10,
+                    Math.round((P[1] + dx * sin + dy * cos) * 10) / 10
+                ]);
+            }
+            return out;
+        } catch (e) { return pts; }
+    }
+
     function flattenShape(shape) {
         if (!shape || !shape.vertices) return [];
         var v = shape.vertices;
@@ -674,13 +697,20 @@
                             }
                         }
                     }
+                    var compPts = pointsToComp(layer, pts);
+                    var compFrames = [];
+                    for (var mfi = 0; mfi < mframes.length; mfi++) {
+                        compFrames.push([mframes[mfi][0], pointsToComp(layer, mframes[mfi][1])]);
+                    }
                     masks.push({
                         name: String(mg.name),
                         mode: maskModeName(mg),
                         inverted: maskInverted(mg),
                         animated: animated,
                         points: pts,
-                        frames: mframes
+                        compPoints: compPts,
+                        frames: mframes,
+                        compFrames: compFrames
                     });
                 }
                 entry.masks = masks;
