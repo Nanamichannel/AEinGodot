@@ -179,6 +179,8 @@ func _after_pick() -> void:
 func _run() -> void:
 	if _busy:
 		return
+	if _busy:
+		return
 	var j := _json_edit.text.strip_edges()
 	var a := _art_edit.text.strip_edges()
 	var o := _out_edit.text.strip_edges()

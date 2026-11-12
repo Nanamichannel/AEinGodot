@@ -157,7 +157,16 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 		stats = _build_animation(data, segments)
 	var err := OK
 	if merge_target != null:
-		_root.name = _unique_name(merge_target, _root.name, _root)
+		# 重名就替换掉旧的那份，避免越导越多
+		var base_name := String(_root.name)
+		var existing := merge_target.get_node_or_null(NodePath(base_name))
+		if existing != null:
+			merge_target.remove_child(existing)
+			existing.queue_free()
+			_lines.append("替换了已存在的同名节点：" + base_name)
+			_root.name = base_name
+		else:
+			_root.name = _unique_name(merge_target, _root.name, _root)
 		merge_target.add_child(_root)
 		var scene_root: Node = merge_target
 		while scene_root.owner != null:
