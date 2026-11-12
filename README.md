@@ -23,6 +23,7 @@
 | `addons/ae_motion/blend_screen.gdshader` | 需要与底图运算的混合模式（屏幕/叠加/差值等 15 种 + 线性加深） |
 | `addons/ae_motion/blend_modes.gdshaderinc` | 22 种 AE 混合模式的 GLSL 公式参考（插件不直接用） |
 | `docs/ae-motion.md` | 数据格式说明：字段、单位、坐标、贴图摆放公式 |
+| `docs/坐标与锚点.md` | **坐标/锚点/父子层级的全部坑**，换 AI 上下文时先读这份 |
 | `docs/AI规则.md` | 交给 AI 时的常驻约束（把踩过的坑全写进去了） |
 
 ---
