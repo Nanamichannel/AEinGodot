@@ -584,7 +584,7 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 			if n2 == null or not (n2 is Sprite2D):
 				continue
 			var rel2 := String(_root.get_path_to(n2))
-			var off := Vector2.ZERO if _parented2d.has(int(L["index"])) else _ancestor_offset(L)
+			var afx := Transform2D.IDENTITY if _parented2d.has(int(L["index"])) else _ancestor_xform(L)
 			var t2k: Dictionary = L["tracks"]
 
 			var kp2 := _slice(t2k["position"], s, e, false)
@@ -595,7 +595,7 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 				var pshift := _parent_anchor(L) if _parented2d.has(int(L["index"])) else Vector2.ZERO
 				for row in kp2:
 					anim.track_insert_key(tp, float(row[0]) / 1000.0,
-						Vector2(float(row[1]), float(row[2])) - pshift + off)
+						afx * (Vector2(float(row[1]), float(row[2])) - pshift))
 					keys += 1
 				tracks += 1
 
@@ -1049,7 +1049,7 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 			if n2 == null or not (n2 is Sprite2D):
 				continue
 			var rel2 := String(_root.get_path_to(n2))
-			var off := Vector2.ZERO if _parented2d.has(int(L["index"])) else _ancestor_offset(L)
+			var afx := Transform2D.IDENTITY if _parented2d.has(int(L["index"])) else _ancestor_xform(L)
 			var t2k: Dictionary = L["tracks"]
 
 			var kp2 := _slice(t2k["position"], s, e, false)
@@ -1060,7 +1060,7 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 				var pshift := _parent_anchor(L) if _parented2d.has(int(L["index"])) else Vector2.ZERO
 				for row in kp2:
 					anim.track_insert_key(tp, float(row[0]) / 1000.0,
-						Vector2(float(row[1]), float(row[2])) - pshift + off)
+						afx * (Vector2(float(row[1]), float(row[2])) - pshift))
 					keys += 1
 				tracks += 1
 
@@ -1338,17 +1338,35 @@ func _row_at(rows: Array, ms: float) -> Array:
 			best = row
 	return best
 
-func _ancestor_offset(L: Dictionary) -> Vector2:
-	var off := Vector2.ZERO
+## 父级链的 2D 复合变换（自上而下）：T(pos − anchor) 再叠加 scale / rotation。
+## 只累加 position 会漏掉父级 scale —— 父级 scale=1.03 时 y 会偏 40px。
+func _ancestor_xform(L: Dictionary) -> Transform2D:
+	var chain: Array = []
 	var pid = L.get("parent")
 	var guard := 0
 	while pid != null and int(pid) > 0 and guard < 32:
+		chain.push_front(int(pid))
 		var P: Dictionary = _by_index[int(pid)]
-		var pp: Array = P["tracks"]["position"][0]
-		off += Vector2(float(pp[1]), float(pp[2]))
 		pid = P.get("parent")
 		guard += 1
-	return off
+
+	var xf := Transform2D.IDENTITY
+	for id in chain:
+		var P: Dictionary = _by_index[id]
+		var pp: Array = P["tracks"]["position"][0]
+		var ps: Array = P["tracks"]["scale"][0]
+		var pr: Array = P["tracks"]["rotation"][0]
+		var pa: Array = P.get("asset", {}).get("anchor", [0, 0])
+		# 先建“旋转+缩放”的线性部分（origin 为 0，scaled 不会挪动原点），再设平移
+		var t := Transform2D(deg_to_rad(float(pr[1])), Vector2.ZERO)
+		t = t.scaled(Vector2(float(ps[1]), float(ps[2])))
+		t.origin = Vector2(float(pp[1]) - float(pa[0]), float(pp[2]) - float(pa[1]))
+		xf = xf * t
+	return xf
+
+
+func _ancestor_offset(L: Dictionary) -> Vector2:
+	return _ancestor_xform(L).origin
 
 
 func _node_for2d(idx: int) -> Node:
@@ -1398,7 +1416,7 @@ func _node_for2d(idx: int) -> Node:
 	if parent2d != null:
 		sp.position = Vector2(float(p0[1]), float(p0[2])) - _parent_anchor(L)
 	else:
-		sp.position = Vector2(float(p0[1]), float(p0[2])) + _ancestor_offset(L)
+		sp.position = _ancestor_xform(L) * Vector2(float(p0[1]), float(p0[2]))
 	sp.z_index = 100 - int(L["z"])
 
 	var s0: Array = L["tracks"]["scale"][0]
