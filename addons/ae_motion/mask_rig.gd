@@ -1,26 +1,36 @@
 extends SubViewport
 ##
-## mask_rig.gd —— 把逐帧蒙版多边形画进一个 SubViewport，输出成遮罩纹理
+## mask_rig.gd —— 按 AE 蒙版数据逐帧生成遮罩纹理
 ##
-## 优点：着色器里只采一次纹理，不管蒙版有多少点，成本恒定。
+## 由导入器按「蒙版所在图层的名字」创建，放在 `Masks/` 下。
+## 默认**不自动播放**，由你在需要的时候指定时间，然后取纹理：
 ##
-## 由导入器自动创建。也可以手动用：
-##   1. SubViewport（尺寸=合成尺寸，transparent_bg=true，update_mode=ALWAYS）
-##      挂本脚本，子节点放一个 Polygon2D（白色）
-##   2. 目标 Sprite2D 的 material 用 mask_tex.gdshader
-##   3. 目标节点挂 mask_apply.gd，把 mask_viewport 指向这个 SubViewport
+##   var m := $Masks/转场遮罩
+##   m.set_time(1200)                       # 取第 1.2 秒的蒙版形状
+##   mat.set_shader_parameter("mask_tex", m.get_mask_texture())
+##
+## 需要它自己随时间走的场合，把 autoplay 勾上即可。
 ##
 
 @export var frames: Array = []          # [[毫秒, [x1,y1,x2,y2,...]], ...] 合成坐标
+@export var comp_size := Vector2(1920.0, 1080.0)
+@export var autoplay := false
 @export var loop := false
-@export var enabled := true
-@export var comp_size := Vector2(1920.0, 1080.0)   # 多边形点所在的坐标系尺寸
 
 var _t := 0.0
 var _poly: Polygon2D
 
 
 func _ready() -> void:
+	render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	transparent_bg = true
+	_ensure_poly()
+	set_time(0.0)
+
+
+func _ensure_poly() -> void:
+	if _poly != null and is_instance_valid(_poly):
+		return
 	_poly = null
 	for c in get_children():
 		if c is Polygon2D:
@@ -31,22 +41,12 @@ func _ready() -> void:
 		_poly.name = "MaskPoly"
 		add_child(_poly)
 	_poly.color = Color(1, 1, 1, 1)
-	_poly.antialiased = false
-	_apply(0.0)
 
 
-func _process(delta: float) -> void:
-	if not enabled or frames.is_empty() or _poly == null:
-		return
-	_t += delta * 1000.0
-	var total := float(frames[frames.size() - 1][0])
-	if _t > total and total > 0.0:
-		_t = fmod(_t, total) if loop else total
-	_apply(_t)
-
-
-func _apply(ms: float) -> void:
-	if _poly == null or frames.is_empty():
+## 把蒙版定位到指定毫秒
+func set_time(ms: float) -> void:
+	_ensure_poly()
+	if frames.is_empty():
 		return
 	var current: Array = frames[0]
 	for f in frames:
@@ -55,9 +55,30 @@ func _apply(ms: float) -> void:
 		else:
 			break
 	var src: Array = current[1]
-	# 视口可能比合成小（省性能），点要按比例缩放
 	var k := Vector2(float(size.x), float(size.y)) / comp_size
 	var pts := PackedVector2Array()
 	for i in range(src.size()):
 		pts.append(Vector2(float(src[i][0]), float(src[i][1])) * k)
 	_poly.polygon = pts
+
+
+## 拿到遮罩纹理（ViewportTexture），直接喂给 mask_tex 着色器
+func get_mask_texture() -> Texture2D:
+	return get_texture()
+
+
+## 蒙版总时长（毫秒）
+func duration_ms() -> float:
+	if frames.is_empty():
+		return 0.0
+	return float(frames[frames.size() - 1][0])
+
+
+func _process(delta: float) -> void:
+	if not autoplay or frames.is_empty():
+		return
+	_t += delta * 1000.0
+	var total := duration_ms()
+	if total > 0.0 and _t > total:
+		_t = fmod(_t, total) if loop else total
+	set_time(_t)

@@ -1578,7 +1578,7 @@ func _build_mask_drivers() -> void:
 		return
 	# 用 SubViewport + Polygon2D 把蒙版画成纹理：着色器只采一次，成本与点数无关
 	var holder := Node2D.new()
-	holder.name = "MaskRigs"
+	holder.name = "Masks"
 	_root.add_child(holder)
 	for d in _mask_drivers:
 		var m: Dictionary = d["mask"]
@@ -1586,7 +1586,7 @@ func _build_mask_drivers() -> void:
 		if frames.is_empty():
 			continue
 		var vp := SubViewport.new()
-		vp.name = "Mask_" + String(d["layer"])
+		vp.name = _unique_name(holder, _base_name(String(d["layer"])), null)
 		# 遮罩视口用半分辨率：边缘略软，开销降到 1/4
 		vp.size = Vector2i(int(_comp_size.x * 0.5), int(_comp_size.y * 0.5))
 		vp.transparent_bg = true
