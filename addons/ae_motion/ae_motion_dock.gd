@@ -1,7 +1,7 @@
 @tool
 extends VBoxContainer
 ##
-## 面板：选 JSON / 选素材目录 / 选输出场景 → 自动生成
+## 面板：选 JSON / 选素材目录 / 选输出场景 → 点"生成"
 ##
 
 var _json_edit: LineEdit
@@ -9,11 +9,9 @@ var _art_edit: LineEdit
 var _frames_edit: LineEdit
 var _segments: LineEdit
 var _merge_check: CheckBox
-var _autoplay_check: CheckBox
 var _merge_parent: LineEdit
 var _out_edit: LineEdit
 var _log: TextEdit
-var _auto: CheckBox
 var _open_after: CheckBox
 var _dlg: EditorFileDialog
 var _target := ""
@@ -46,10 +44,6 @@ func _build_ui() -> void:
 	_out_edit = _row("输出场景（项目内）", _browse_out)
 
 	var opts := HBoxContainer.new()
-	_auto = CheckBox.new()
-	_auto.text = "选完自动生成"
-	_auto.button_pressed = true
-	opts.add_child(_auto)
 	_open_after = CheckBox.new()
 	_open_after.text = "生成后打开"
 	_open_after.button_pressed = true
@@ -157,7 +151,6 @@ func _on_file_selected(path: String) -> void:
 				_out_edit.text = "res://generated/%s.tscn" % _safe(base)
 		"out":
 			_out_edit.text = path
-	_after_pick()
 
 
 func _on_dir_selected(path: String) -> void:
@@ -167,18 +160,11 @@ func _on_dir_selected(path: String) -> void:
 			_frames_edit.text = path.path_join("Frames")
 	elif _target == "frames":
 		_frames_edit.text = path
-	_after_pick()
 
 
-func _after_pick() -> void:
-	if _auto.button_pressed:
-		await get_tree().create_timer(0.2).timeout
-		_run()
 
 
 func _run() -> void:
-	if _busy:
-		return
 	if _busy:
 		return
 	var j := _json_edit.text.strip_edges()
