@@ -276,14 +276,14 @@ func _node_for(idx: int) -> Node:
 		if scol2 != null:
 			sp.texture = _white_texture()
 			sp.self_modulate = scol2
-			sp.offset = Vector2.ZERO
+			sp.offset = Vector2(-float(anchor[0]) / maxf(wj, 1.0), -float(anchor[1]) / maxf(hj, 1.0))
 			sp.scale = Vector2(maxf(wj, 1.0), maxf(hj, 1.0))
 		else:
 			sp.texture = _texture_for(L)
 			var tex_size := Vector2(wj, hj)
 			if sp.texture != null:
 				tex_size = sp.texture.get_size()
-			sp.offset = Vector2(wj, hj) - tex_size
+			sp.offset = -(Vector2(float(anchor[0]), float(anchor[1])) - (Vector2(wj, hj) - tex_size))
 		n = sp
 
 	# AE 的层序是全局的：必须关掉相对父级累加，否则子层会被父级的 z 拖到底下
@@ -592,10 +592,10 @@ func _build_animation(data: Dictionary, segments: Array) -> Array:
 				var tp := anim.add_track(Animation.TYPE_VALUE)
 				anim.track_set_path(tp, NodePath(rel2 + ":position"))
 				anim.track_set_interpolation_type(tp, Animation.INTERPOLATION_LINEAR)
-				var anc2: Array = L["asset"]["anchor"]
+				var pshift := _parent_anchor(L) if _parented2d.has(int(L["index"])) else Vector2.ZERO
 				for row in kp2:
 					anim.track_insert_key(tp, float(row[0]) / 1000.0,
-						Vector2(float(row[1]) - float(anc2[0]), float(row[2]) - float(anc2[1])) + off)
+						Vector2(float(row[1]), float(row[2])) - pshift + off)
 					keys += 1
 				tracks += 1
 
@@ -1057,10 +1057,10 @@ func _build_animation_3d(data: Dictionary, segments: Array) -> Array:
 				var tp := anim.add_track(Animation.TYPE_VALUE)
 				anim.track_set_path(tp, NodePath(rel2 + ":position"))
 				anim.track_set_interpolation_type(tp, Animation.INTERPOLATION_LINEAR)
-				var anc2: Array = L["asset"]["anchor"]
+				var pshift := _parent_anchor(L) if _parented2d.has(int(L["index"])) else Vector2.ZERO
 				for row in kp2:
 					anim.track_insert_key(tp, float(row[0]) / 1000.0,
-						Vector2(float(row[1]) - float(anc2[0]), float(row[2]) - float(anc2[1])) + off)
+						Vector2(float(row[1]), float(row[2])) - pshift + off)
 					keys += 1
 				tracks += 1
 
@@ -1377,14 +1377,14 @@ func _node_for2d(idx: int) -> Node:
 	if sc2 != null:
 		sp.texture = _white_texture()
 		sp.self_modulate = sc2
-		sp.offset = Vector2.ZERO
+		sp.offset = Vector2(-float(a[0]) / maxf(wj, 1.0), -float(a[1]) / maxf(hj, 1.0))
 		sp.scale = Vector2(maxf(wj, 1.0), maxf(hj, 1.0))
 	else:
 		sp.texture = _texture_for(L)
 		var ts := Vector2(wj, hj)
 		if sp.texture != null:
 			ts = sp.texture.get_size()
-		sp.offset = Vector2(wj, hj) - ts
+		sp.offset = -(Vector2(float(a[0]), float(a[1])) - (Vector2(wj, hj) - ts))
 
 	# 父级也是 2D 层时，保留层级（父级动，子层跟着动）；否则按合成坐标摆放
 	var p0: Array = L["tracks"]["position"][0]
@@ -1396,9 +1396,9 @@ func _node_for2d(idx: int) -> Node:
 		if pn != null and pn is CanvasItem and not (pn is Node3D):
 			parent2d = pn
 	if parent2d != null:
-		sp.position = Vector2(float(p0[1]) - float(a[0]), float(p0[2]) - float(a[1]))
+		sp.position = Vector2(float(p0[1]), float(p0[2])) - _parent_anchor(L)
 	else:
-		sp.position = Vector2(float(p0[1]) - float(a[0]), float(p0[2]) - float(a[1])) + _ancestor_offset(L)
+		sp.position = Vector2(float(p0[1]), float(p0[2])) + _ancestor_offset(L)
 	sp.z_index = 100 - int(L["z"])
 
 	var s0: Array = L["tracks"]["scale"][0]
@@ -1537,3 +1537,13 @@ func _apply_blend3(sp: Sprite3D, L: Dictionary) -> void:
 	mat.blend_mode = bm
 	sp.material_override = mat
 	_blend_applied.append("%s(%s)" % [String(L["name"]), mode])
+
+func _parent_anchor(L: Dictionary) -> Vector2:
+	var pid = L.get("parent")
+	if pid == null or int(pid) <= 0:
+		return Vector2.ZERO
+	var P: Dictionary = _by_index.get(int(pid), {})
+	if P.is_empty():
+		return Vector2.ZERO
+	var pa: Array = P.get("asset", {}).get("anchor", [0, 0])
+	return Vector2(float(pa[0]), float(pa[1]))
