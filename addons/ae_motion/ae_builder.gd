@@ -29,6 +29,7 @@ var _missing_frames := []
 var _blend_skipped := []
 var _mask_skipped := []
 var _mask_applied := []
+var _mask_drivers := []
 var _blend_applied := []
 var _heavy_frames := []
 var _frames_size_mismatch := []
@@ -50,6 +51,7 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	_blend_skipped.clear()
 	_mask_skipped.clear()
 	_mask_applied.clear()
+	_mask_drivers.clear()
 	_blend_applied.clear()
 	_heavy_frames.clear()
 	_frames_size_mismatch.clear()
@@ -148,6 +150,8 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 	sorted.sort_custom(func(a, b): return int(a["z"]) > int(b["z"]))
 	for L in sorted:
 		_node_for(int(L["index"]))
+
+	_build_mask_drivers()
 
 	var stats: Array
 	if _use3d:
@@ -335,9 +339,11 @@ func _apply_masks2d(child: Node, L: Dictionary) -> Node:
 	var masks: Array = L.get("masks", [])
 	if masks.is_empty() or not (child is CanvasItem):
 		return null
+	# 动蒙版：生成一个驱动节点，由它每帧把多边形写进目标材质
 	for m in masks:
 		if bool(m.get("animated", false)):
-			_mask_skipped.append("%s(%s,动的蒙版)" % [String(L["name"]), String(m.get("name", "?"))])
+			_mask_drivers.append({"layer": String(L["name"]), "mask": m})
+			_mask_applied.append("%s(%s,动蒙版→MaskDriver)" % [String(L["name"]), String(m.get("name", "?"))])
 			return null
 		if String(m.get("mode", "ADD")) != "ADD" or bool(m.get("inverted", false)):
 			_mask_skipped.append("%s(%s,%s%s)" % [String(L["name"]), String(m.get("name", "?")),
@@ -1565,3 +1571,21 @@ func _parent_anchor(L: Dictionary) -> Vector2:
 		return Vector2.ZERO
 	var pa: Array = P.get("asset", {}).get("anchor", [0, 0])
 	return Vector2(float(pa[0]), float(pa[1]))
+
+func _build_mask_drivers() -> void:
+	if _mask_drivers.is_empty():
+		return
+	var holder := Node2D.new()
+	holder.name = "MaskDrivers"
+	_root.add_child(holder)
+	for d in _mask_drivers:
+		var m: Dictionary = d["mask"]
+		var frames: Array = m.get("frames", [])
+		if frames.is_empty():
+			continue
+		var drv := Node.new()
+		drv.name = "Mask_" + String(d["layer"])
+		drv.set_script(load("res://addons/ae_motion/mask_driver.gd"))
+		drv.set("frames", frames)
+		drv.set("layer_size", _comp_size)
+		holder.add_child(drv)

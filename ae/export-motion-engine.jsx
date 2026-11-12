@@ -619,12 +619,34 @@
                         animated = true;
                     }
                     var pts = flattenShape(m0);
+                    // 动蒙版：逐帧采样，只在形状变化时存一帧（稀疏）
+                    var mframes = [];
+                    if (animated) {
+                        var mstep = 1 / fps;
+                        var mcount = Math.floor(duration * fps) + 1;
+                        var lastKey = "";
+                        for (var fi = 0; fi < mcount; fi++) {
+                            var ft = fi * mstep;
+                            if (ft > duration) ft = duration;
+                            var fshape = mshape.valueAtTime(ft, false);
+                            var fpts = flattenShape(fshape);
+                            var sig = fpts.length + ":";
+                            for (var si = 0; si < fpts.length; si += 3) {
+                                sig += Math.round(fpts[si][0]) + "," + Math.round(fpts[si][1]) + ";";
+                            }
+                            if (sig !== lastKey) {
+                                lastKey = sig;
+                                mframes.push([Math.round(ft * 1000), fpts]);
+                            }
+                        }
+                    }
                     masks.push({
                         name: String(mg.name),
                         mode: maskModeName(mg),
                         inverted: maskInverted(mg),
                         animated: animated,
-                        points: pts
+                        points: pts,
+                        frames: mframes
                     });
                 }
                 entry.masks = masks;
