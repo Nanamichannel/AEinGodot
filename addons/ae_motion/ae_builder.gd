@@ -1575,17 +1575,25 @@ func _parent_anchor(L: Dictionary) -> Vector2:
 func _build_mask_drivers() -> void:
 	if _mask_drivers.is_empty():
 		return
+	# 用 SubViewport + Polygon2D 把蒙版画成纹理：着色器只采一次，成本与点数无关
 	var holder := Node2D.new()
-	holder.name = "MaskDrivers"
+	holder.name = "MaskRigs"
 	_root.add_child(holder)
 	for d in _mask_drivers:
 		var m: Dictionary = d["mask"]
 		var frames: Array = m.get("compFrames", m.get("frames", []))
 		if frames.is_empty():
 			continue
-		var drv := Node.new()
-		drv.name = "Mask_" + String(d["layer"])
-		drv.set_script(load("res://addons/ae_motion/mask_driver.gd"))
-		drv.set("frames", frames)
-		drv.set("comp_size", _comp_size)
-		holder.add_child(drv)
+		var vp := SubViewport.new()
+		vp.name = "Mask_" + String(d["layer"])
+		vp.size = Vector2i(int(_comp_size.x), int(_comp_size.y))
+		vp.transparent_bg = true
+		vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		vp.set_script(load("res://addons/ae_motion/mask_rig.gd"))
+		vp.set("frames", frames)
+		var poly := Polygon2D.new()
+		poly.name = "MaskPoly"
+		poly.color = Color(1, 1, 1, 1)
+		vp.add_child(poly)
+		holder.add_child(vp)
+		_mask_applied.append("%s → %s" % [String(d["layer"]), vp.name])
