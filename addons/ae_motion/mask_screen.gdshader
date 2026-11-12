@@ -8,7 +8,7 @@ shader_type canvas_item;
 //
 
 uniform int count = 0;
-uniform vec2 points[256];
+uniform vec2 points[512];
 uniform vec2 layer_size = vec2(1.0, 1.0);
 uniform vec2 layer_anchor = vec2(0.0, 0.0);
 uniform float feather = 0.0;
@@ -16,7 +16,7 @@ uniform float feather = 0.0;
 bool inside_polygon(vec2 p) {
 	bool inside = false;
 	int n = count;
-	for (int i = 0; i < 256; i++) {
+	for (int i = 0; i < 512; i++) {
 		if (i >= n) break;
 		int j = i + 1;
 		if (j >= n) j = 0;

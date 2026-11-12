@@ -65,19 +65,53 @@
         var out = [];
         var n = v.length;
         var segs = closed ? n : n - 1;
-        var STEPS = 8;
+        var TOL = 0.4;          // 允许的最大偏差（像素）
+        var MAX_DEPTH = 7;
+
+        function subdivide(p0, c1, c2, p3, depth) {
+            var dx = p3[0] - p0[0], dy = p3[1] - p0[1];
+            var len2 = dx * dx + dy * dy;
+            // 控制点到弦的距离，够平就直接收
+            function dist(pt) {
+                if (len2 < 1e-9) {
+                    var ax = pt[0] - p0[0], ay = pt[1] - p0[1];
+                    return Math.sqrt(ax * ax + ay * ay);
+                }
+                var t2 = ((pt[0] - p0[0]) * dx + (pt[1] - p0[1]) * dy) / len2;
+                t2 = Math.max(0, Math.min(1, t2));
+                var qx = p0[0] + t2 * dx, qy = p0[1] + t2 * dy;
+                var ex = pt[0] - qx, ey = pt[1] - qy;
+                return Math.sqrt(ex * ex + ey * ey);
+            }
+            if (depth >= MAX_DEPTH || (dist(c1) <= TOL && dist(c2) <= TOL)) {
+                out.push([Math.round(p3[0] * 10) / 10, Math.round(p3[1] * 10) / 10]);
+                return;
+            }
+            // de Casteljau 一分为二
+            var m01 = [(p0[0] + c1[0]) / 2, (p0[1] + c1[1]) / 2];
+            var m12 = [(c1[0] + c2[0]) / 2, (c1[1] + c2[1]) / 2];
+            var m23 = [(c2[0] + p3[0]) / 2, (c2[1] + p3[1]) / 2];
+            var m012 = [(m01[0] + m12[0]) / 2, (m01[1] + m12[1]) / 2];
+            var m123 = [(m12[0] + m23[0]) / 2, (m12[1] + m23[1]) / 2];
+            var mid = [(m012[0] + m123[0]) / 2, (m012[1] + m123[1]) / 2];
+            subdivide(p0, m01, m012, mid, depth + 1);
+            subdivide(mid, m123, m23, p3, depth + 1);
+        }
+
         for (var i = 0; i < segs; i++) {
             var i2 = (i + 1) % n;
             var p0 = v[i], p3 = v[i2];
             var c1 = [p0[0] + ot[i][0], p0[1] + ot[i][1]];
             var c2 = [p3[0] + it[i2][0], p3[1] + it[i2][1]];
-            for (var s = 0; s < STEPS; s++) {
-                var tt = s / STEPS;
-                var u = 1 - tt;
-                var x = u*u*u*p0[0] + 3*u*u*tt*c1[0] + 3*u*tt*tt*c2[0] + tt*tt*tt*p3[0];
-                var y = u*u*u*p0[1] + 3*u*u*tt*c1[1] + 3*u*tt*tt*c2[1] + tt*tt*tt*p3[1];
-                out.push([Math.round(x * 10) / 10, Math.round(y * 10) / 10]);
-            }
+            out.push([Math.round(p0[0] * 10) / 10, Math.round(p0[1] * 10) / 10]);
+            subdivide(p0, c1, c2, p3, 0);
+        }
+        // 着色器 uniform 上限 512，超过就等间隔抽稀
+        if (out.length > 480) {
+            var step2 = out.length / 480;
+            var slim = [];
+            for (var k = 0; k < 480; k++) slim.push(out[Math.floor(k * step2)]);
+            out = slim;
         }
         return out;
     }

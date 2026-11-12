@@ -64,7 +64,7 @@ func _apply(ms: float) -> void:
 
 	var pts_arr: Array = current[1]
 	var packed := PackedVector2Array()
-	var max_pts := 256
+	var max_pts := 512
 	for i in range(pts_arr.size()):
 		if packed.size() >= max_pts:
 			break
