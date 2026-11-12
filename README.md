@@ -24,6 +24,7 @@
 | `addons/ae_motion/blend_modes.gdshaderinc` | 22 种 AE 混合模式的 GLSL 公式参考（插件不直接用） |
 | `docs/ae-motion.md` | 数据格式说明：字段、单位、坐标、贴图摆放公式 |
 | `docs/坐标与锚点.md` | **坐标/锚点/父子层级的全部坑**，换 AI 上下文时先读这份 |
+| `docs/蒙版转场.md` | 用角色运动做蒙版转场的完整流程（AE 摆法 → 导出 → Godot 接线） |
 | `docs/AI规则.md` | 交给 AI 时的常驻约束（把踩过的坑全写进去了） |
 
 ---

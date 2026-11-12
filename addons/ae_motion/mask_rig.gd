@@ -14,6 +14,7 @@ extends SubViewport
 @export var frames: Array = []          # [[毫秒, [x1,y1,x2,y2,...]], ...] 合成坐标
 @export var loop := false
 @export var enabled := true
+@export var comp_size := Vector2(1920.0, 1080.0)   # 多边形点所在的坐标系尺寸
 
 var _t := 0.0
 var _poly: Polygon2D
@@ -54,7 +55,9 @@ func _apply(ms: float) -> void:
 		else:
 			break
 	var src: Array = current[1]
+	# 视口可能比合成小（省性能），点要按比例缩放
+	var k := Vector2(float(size.x), float(size.y)) / comp_size
 	var pts := PackedVector2Array()
 	for i in range(src.size()):
-		pts.append(Vector2(float(src[i][0]), float(src[i][1])))
+		pts.append(Vector2(float(src[i][0]), float(src[i][1])) * k)
 	_poly.polygon = pts

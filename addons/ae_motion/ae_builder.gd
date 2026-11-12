@@ -118,7 +118,8 @@ func build(json_path: String, art_dir: String, out_scene: String, frames_dir: St
 		screen_layer.add_child(holder)
 		var vp := SubViewport.new()
 		vp.name = "3D视口"
-		vp.size = Vector2i(int(_comp_size.x), int(_comp_size.y))
+		# 遮罩视口用半分辨率：边缘略软，开销降到 1/4
+		vp.size = Vector2i(int(_comp_size.x * 0.5), int(_comp_size.y * 0.5))
 		vp.transparent_bg = true
 		vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 		holder.add_child(vp)
@@ -1586,11 +1587,13 @@ func _build_mask_drivers() -> void:
 			continue
 		var vp := SubViewport.new()
 		vp.name = "Mask_" + String(d["layer"])
-		vp.size = Vector2i(int(_comp_size.x), int(_comp_size.y))
+		# 遮罩视口用半分辨率：边缘略软，开销降到 1/4
+		vp.size = Vector2i(int(_comp_size.x * 0.5), int(_comp_size.y * 0.5))
 		vp.transparent_bg = true
 		vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 		vp.set_script(load("res://addons/ae_motion/mask_rig.gd"))
 		vp.set("frames", frames)
+		vp.set("comp_size", _comp_size)
 		var poly := Polygon2D.new()
 		poly.name = "MaskPoly"
 		poly.color = Color(1, 1, 1, 1)
