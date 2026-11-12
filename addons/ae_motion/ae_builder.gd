@@ -242,6 +242,11 @@ func _node_for(idx: int) -> Node:
 
 	var L: Dictionary = _by_index[idx]
 	var frames_name := String(L.get("frames", ""))
+	# AE 的图片序列素材：层名形如 "转场_[00000-00025].png"
+	if frames_name == "":
+		var seq_prefix := _sequence_prefix(String(L["name"]))
+		if seq_prefix != "":
+			frames_name = seq_prefix
 	var n: Node2D
 
 	if String(L.get("type", "image")) == "null":
@@ -251,6 +256,16 @@ func _node_for(idx: int) -> Node:
 	elif frames_name != "":
 		var asp := AnimatedSprite2D.new()
 		asp.sprite_frames = _build_sprite_frames(frames_name, bool(L.get("framesLoop", true)))
+		# 图片序列：层名里的 [00000-00025] 是帧范围，超出部分裁掉；
+		# 播放速度按图层时长铺满，和 AE 里一致
+		var seq_count := _sequence_frame_count(String(L["name"]))
+		if seq_count > 0 and asp.sprite_frames.get_frame_count("default") > seq_count:
+			while asp.sprite_frames.get_frame_count("default") > seq_count:
+				asp.sprite_frames.remove_frame("default", asp.sprite_frames.get_frame_count("default") - 1)
+		var layer_dur := float(L.get("outPoint", 0.0)) - float(L.get("inPoint", 0.0))
+		var fc := asp.sprite_frames.get_frame_count("default")
+		if fc > 0 and layer_dur > 0.01:
+			asp.sprite_frames.set_animation_speed("default", float(fc) / layer_dur)
 		asp.animation = "default"
 		asp.autoplay = "default"
 		asp.centered = false
@@ -390,7 +405,19 @@ func _build_sprite_frames(folder: String, loop_anim: bool = true) -> SpriteFrame
 	var path := _frames_root.path_join(folder)
 	var dir := DirAccess.open(path)
 	if dir == null:
-		_missing_frames.append(folder)
+		# 不是 Frames/<名字> 这种序列目录，就当作"图片序列素材"按前缀去找
+		var seq := _find_sequence(folder)
+		if seq.is_empty():
+			_missing_frames.append(folder)
+			return sf
+		var ok := 0
+		for sp in seq:
+			var tex = load(sp)
+			if tex is Texture2D:
+				sf.add_frame("default", tex as Texture2D)
+				ok += 1
+		if ok == 0:
+			_missing_frames.append(folder + "（序列 PNG 未导入完成）")
 		return sf
 
 	var files: Array = []
@@ -1600,3 +1627,63 @@ func _build_mask_drivers() -> void:
 		vp.add_child(poly)
 		holder.add_child(vp)
 		_mask_applied.append("%s → %s" % [String(d["layer"]), vp.name])
+
+## 从 "转场_[00000-00025].png" 里取出 "转场_"，不是序列就返回空串
+func _sequence_prefix(layer_name: String) -> String:
+	var bracket := layer_name.find("[")
+	if bracket <= 0:
+		return ""
+	var close := layer_name.find("]", bracket)
+	if close < 0:
+		return ""
+	var inner := layer_name.substr(bracket + 1, close - bracket - 1)
+	if inner.find("-") < 0:
+		return ""
+	var prefix := layer_name.substr(0, bracket)
+	if prefix.strip_edges() == "":
+		return ""
+	return prefix
+
+
+## 在素材目录里递归找 <prefix><数字>.png，按数字排序后返回路径数组
+func _find_sequence(prefix: String) -> Array:
+	var found: Array = []
+	_scan_sequence_dir(_art_dir, prefix, found)
+	found.sort_custom(func(a, b): return str(a).naturalnocasecmp_to(str(b)) < 0)
+	return found
+
+
+func _scan_sequence_dir(dir_path: String, prefix: String, out: Array) -> void:
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var f := dir.get_next()
+	while f != "":
+		if dir.current_is_dir():
+			if not f.begins_with("."):
+				_scan_sequence_dir(dir_path.path_join(f), prefix, out)
+		else:
+			var lower := f.to_lower()
+			if lower.ends_with(".png") and f.begins_with(prefix):
+				out.append(dir_path.path_join(f))
+		f = dir.get_next()
+	dir.list_dir_end()
+
+## "转场_[00000-00025].png" → 26；解析不出来返回 0
+func _sequence_frame_count(layer_name: String) -> int:
+	var bracket := layer_name.find("[")
+	if bracket < 0:
+		return 0
+	var close := layer_name.find("]", bracket)
+	if close < 0:
+		return 0
+	var inner := layer_name.substr(bracket + 1, close - bracket - 1)
+	var dash := inner.find("-")
+	if dash < 0:
+		return 0
+	var a := int(inner.substr(0, dash))
+	var b := int(inner.substr(dash + 1))
+	if b < a:
+		return 0
+	return b - a + 1
